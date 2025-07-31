@@ -1,0 +1,563 @@
+const axios = require('axios');
+const Bottleneck = require('bottleneck');
+
+// 1. Setup Bottleneck limiter (base settings as per API docs)
+const limiter = new Bottleneck({
+  maxConcurrent: 3,    // adjust to safe value per API docs
+  minTime: 200         // adjust for base API rate, e.g. 5/sec
+});
+
+// 2. Helper: sleep for X ms
+const sleep = ms => new Promise(res => setTimeout(res, ms));
+
+const Project = require('../models/projects/projectModel.js')
+
+const getAllProjects = async (req, res) => {
+  try {
+    const projects = await Project.find().sort({ createdAt: -1 });
+    res.json(projects);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+}
+
+const updateProject = async (req, res) => {
+  const { websiteName, country, city, websiteUrl, keywords } = req.body;
+
+  try {
+    let project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    // Process keywords if they come as a string (from Excel paste)
+    let keywordsArray = keywords;
+
+    let rankings;
+    if (typeof keywords === 'string') {
+      // Split by newline, comma, or tab and filter empty strings
+      keywordsArray = keywords
+        .split(/[\n,\t]+/)
+        .map(keyword => keyword.trim())
+        .filter(keyword => keyword !== '');
+      rankingArray = project.rankings.filter(item =>
+        keywordsArray.some(keyword => item.keyword === keyword)
+      );
+    }
+
+    // Build project object
+    const projectFields = {
+      websiteName: websiteName || project.websiteName,
+      country: country || project.country,
+      city: city,
+      websiteUrl: websiteUrl || project.websiteUrl,
+      keywords: keywordsArray || project.keywords,
+      rankings: rankingArray
+    };
+
+    // Update project
+    project = await Project.findByIdAndUpdate(
+      req.params.id,
+      { $set: projectFields },
+      { new: true }
+    );
+
+    res.json(project);
+  } catch (err) {
+    console.error(err.message);
+
+    // Check if error is due to invalid ObjectId format
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    res.status(500).send('Server error');
+  }
+}
+
+const getSingleProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    res.json(project);
+  } catch (err) {
+    console.error(err.message);
+
+    // Check if error is due to invalid ObjectId format
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    res.status(500).send('Server error');
+  }
+}
+
+const deleteSingleProject = async (req, res) => {
+  const projectId = req.params.id;
+  try {
+    const project = await Project.findByIdAndDelete(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+    res.status(200).json({ message: `Project with id ${projectId} deleted successfully` });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: `Project with id ${projectId} deleting error` });
+  }
+}
+
+const createProject = async (req, res) => {
+  const { websiteName, country, city, websiteUrl, keywords } = req.body;
+
+  try {
+    // Process keywords if they come as a string (from Excel paste)
+    let keywordsArray = keywords;
+    if (typeof keywords === 'string') {
+      // Split by newline, comma, or tab and filter empty strings
+      keywordsArray = keywords
+        .split(/[\n,\t]+/)
+        .map(keyword => keyword.trim())
+        .filter(keyword => keyword !== '');
+    }
+
+    const newProject = new Project({
+      websiteName,
+      country,
+      city,
+      websiteUrl,
+      keywords: keywordsArray
+    });
+
+    const project = await newProject.save();
+    res.json(project);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+}
+
+const savedRankingForProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    // Return the saved rankings or empty array if none exist
+    res.json(project.rankings || []);
+  } catch (err) {
+    console.error(err.message);
+
+    // Check if error is due to invalid ObjectId format
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    res.status(500).send('Server error');
+  }
+}
+
+const updateRankingForProject = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    // Get country code for Google search
+    let gl = 'us'; // Default to US
+    if (project.country) {
+      // Map common country names to their codes
+      const countryMap = {
+        'united states': 'us',
+        'usa': 'us',
+        'united kingdom': 'uk',
+        'uk': 'uk',
+        'india': 'in',
+        'australia': 'au',
+        'canada': 'ca',
+        'germany': 'de',
+        'france': 'fr',
+        'japan': 'jp',
+        'brazil': 'br',
+        'italy': 'it',
+        'spain': 'es',
+        'russia': 'ru',
+        'mexico': 'mx',
+        'south korea': 'kr',
+        'indonesia': 'id',
+        'turkey': 'tr',
+        'netherlands': 'nl',
+        'saudi arabia': 'sa',
+        'switzerland': 'ch',
+        'sweden': 'se',
+        'poland': 'pl',
+        'belgium': 'be',
+        'thailand': 'th',
+        'ireland': 'ie',
+        'austria': 'at',
+        'norway': 'no',
+        'denmark': 'dk',
+        'singapore': 'sg',
+        'hong kong': 'hk',
+        'finland': 'fi',
+        'new zealand': 'nz',
+        'israel': 'il',
+        'greece': 'gr',
+        'portugal': 'pt',
+        'czech republic': 'cz',
+        'romania': 'ro',
+        'hungary': 'hu',
+        'vietnam': 'vn',
+        'malaysia': 'my',
+        'philippines': 'ph',
+        'south africa': 'za',
+        'pakistan': 'pk',
+        'chile': 'cl',
+        'colombia': 'co',
+        'bangladesh': 'bd',
+        'egypt': 'eg',
+        'argentina': 'ar',
+        'morocco': 'ma',
+        'nigeria': 'ng',
+        'kenya': 'ke',
+        'peru': 'pe',
+        'sri lanka': 'lk',
+        'ukraine': 'ua'
+      };
+
+      const countryLower = project.country.toLowerCase();
+      gl = countryMap[countryLower] || gl;
+    }
+
+    // Get location string if city is available
+    let location = '';
+    if (project.city && project.country) {
+      location = `${project.city}, ${project.country}`;
+    }
+
+    // Extract domain from website URL for ranking check
+    let domain = '';
+    try {
+      const url = new URL(project.websiteUrl);
+      domain = url.hostname.replace('www.', '');
+    } catch (err) {
+      console.error('Invalid URL:', project.websiteUrl);
+    }
+
+    // Prepare to fetch rankings for each keyword
+    const keywordPromises = project.keywords.map(async (keyword) => {
+      const rankingData = rankings.find(r => r.keyword === keyword) || {};
+      try {
+        const data = JSON.stringify({
+          "q": keyword,
+          "location": location || undefined,
+          "gl": gl,
+          "num": 100
+        });
+
+        const config = {
+          method: 'post',
+          maxBodyLength: Infinity,
+          url: 'https://google.serper.dev/search',
+          headers: {
+            'X-API-KEY': 'd08413c2e0c14cf82b3b93c47d1950886970b69e',
+            'Content-Type': 'application/json'
+          },
+          data: data
+        };
+
+        const response = await axios.request(config);
+        const searchResults = response.data.organic || [];
+
+        // Find if the website appears in the search results
+        let ranking = null;
+        let rankingUrl = null;
+
+        for (let i = 0; i < searchResults.length; i++) {
+          const result = searchResults[i];
+          if (result.link && result.link.includes(domain)) {
+            ranking = i + 1;
+            rankingUrl = result.link;
+            break;
+          }
+        }
+
+        return {
+          keyword,
+          ranking,
+          previousRanking: rankingData.ranking || 1,
+          rankingUrl,
+          searchEngine: `google.${gl}`
+        };
+      } catch (err) {
+        console.error(`Error fetching ranking for keyword "${keyword}":`, err.message);
+        return {
+          keyword,
+          ranking: null,
+          rankingUrl: null,
+          error: 'Failed to fetch ranking'
+        };
+      }
+    });
+
+    // Wait for all keyword rankings to be fetched
+    const rankings = await Promise.all(keywordPromises);
+
+    // Update project with new rankings
+    project.rankings = rankings.map(ranking => ({
+      ...ranking,
+      checkedAt: new Date()
+    }));
+
+    // Save the project with the updated rankings
+    await project.save();
+
+    res.json(rankings);
+  } catch (err) {
+    console.error(err.message);
+
+    // Check if error is due to invalid ObjectId format
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    res.status(500).send('Server error');
+  }
+}
+
+const checkRankingForSelectedKeywords = async (req, res) => {
+  try {
+    const project = await Project.findById(req.params.id);
+
+    if (!project) {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    // Get the selected keywords from request body
+    const { keywords } = req.body;
+
+    if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+      return res.status(400).json({ msg: 'Please select at least one keyword' });
+    }
+
+    // Get country code for Google search
+    let gl = 'us'; // Default to US
+    if (project.country) {
+      // Map common country names to their codes
+      const countryMap = {
+        'united states': 'us',
+        'usa': 'us',
+        'united kingdom': 'uk',
+        'uk': 'uk',
+        'india': 'in',
+        'australia': 'au',
+        'canada': 'ca',
+        'germany': 'de',
+        'france': 'fr',
+        'japan': 'jp',
+        'brazil': 'br',
+        'italy': 'it',
+        'spain': 'es',
+        'russia': 'ru',
+        'mexico': 'mx',
+        'south korea': 'kr',
+        'indonesia': 'id',
+        'turkey': 'tr',
+        'netherlands': 'nl',
+        'saudi arabia': 'sa',
+        'switzerland': 'ch',
+        'sweden': 'se',
+        'poland': 'pl',
+        'belgium': 'be',
+        'thailand': 'th',
+        'ireland': 'ie',
+        'austria': 'at',
+        'norway': 'no',
+        'denmark': 'dk',
+        'singapore': 'sg',
+        'hong kong': 'hk',
+        'finland': 'fi',
+        'new zealand': 'nz',
+        'israel': 'il',
+        'greece': 'gr',
+        'portugal': 'pt',
+        'czech republic': 'cz',
+        'romania': 'ro',
+        'hungary': 'hu',
+        'vietnam': 'vn',
+        'malaysia': 'my',
+        'philippines': 'ph',
+        'south africa': 'za',
+        'pakistan': 'pk',
+        'chile': 'cl',
+        'colombia': 'co',
+        'bangladesh': 'bd',
+        'egypt': 'eg',
+        'argentina': 'ar',
+        'morocco': 'ma',
+        'nigeria': 'ng',
+        'kenya': 'ke',
+        'peru': 'pe',
+        'sri lanka': 'lk',
+        'ukraine': 'ua'
+      };
+
+      const countryLower = project.country.toLowerCase();
+      gl = countryMap[countryLower] || gl;
+    }
+
+    // Get location string if city is available
+    let location = '';
+    if (project.city && project.country) {
+      location = `${project.city}, ${project.country}`;
+    }
+
+    // Extract domain from website URL for ranking check
+    let domain = '';
+    try {
+      const url = new URL(project.websiteUrl);
+      domain = url.hostname.replace('www.', '');
+    } catch (err) {
+      console.error('Invalid URL:', project.websiteUrl);
+    }
+
+    // 3. Modified function for header-aware rate limit
+    async function fetchRankingWithRateLimit(keyword, project, domain, location, gl) {
+      const rankingData = project.rankings.find(r => r.keyword === keyword) || {};
+
+      try {
+        const data = {
+          q: keyword,
+          location: location || undefined,
+          gl: gl,
+          num: 100
+        };
+
+        const config = {
+          method: 'post',
+          maxBodyLength: Infinity,
+          url: 'https://google.serper.dev/search',
+          data: data,
+          headers: {
+            'X-API-KEY': process.env.SERPER_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        };
+
+        const response = await axios.request(config);
+        console.log(response.status)
+        const searchResults = response.data.organic || [];
+
+        // --- Handle Rate Limit Headers ---
+        const remaining = parseInt(response.headers['x-ratelimit-remaining']);
+        const reset = parseInt(response.headers['x-ratelimit-reset']);
+        if (remaining === 0 && reset) {
+          const now = Math.floor(Date.now() / 1000);
+          const wait = (reset - now) * 1000;
+          if (wait > 0) {
+            console.log(`[${keyword}] Rate limit hit. Pausing for ${Math.ceil(wait / 1000)}s`);
+            // Pause Bottleneck, resume after wait
+            await limiter.stop({ dropWaitingJobs: false });
+            setTimeout(() => limiter.start(), wait);
+            await sleep(wait);
+          }
+        }
+
+        // Find if the website appears in the search results
+        let ranking = null;
+        let rankingUrl = null;
+        for (let i = 0; i < searchResults.length; i++) {
+          const result = searchResults[i];
+          if (result.link && result.link.includes(domain)) {
+            ranking = i + 1;
+            rankingUrl = result.link;
+            break;
+          }
+        }
+
+        return {
+          keyword,
+          ranking,
+          previousRanking: rankingData.ranking,
+          rankingUrl,
+          searchEngine: `google.${gl}`,
+          checkedAt: new Date()
+        };
+      } catch (err) {
+        console.error(`Error fetching ranking for keyword "${keyword}":`, err.message);
+        return {
+          keyword,
+          ranking: null,
+          previousRanking: rankingData.ranking,
+          rankingUrl: null,
+          searchEngine: `google.${gl}`,
+          error: 'Failed to fetch ranking',
+          checkedAt: new Date()
+        };
+      }
+    }
+
+    // 4. Prepare to fetch rankings for selected keywords only, using Bottleneck
+    const keywordPromises = keywords.map(keyword =>
+      limiter.schedule(() => fetchRankingWithRateLimit(keyword, project, domain, location, gl))
+    );
+
+    // 5. Wait for all keyword rankings to be fetched
+    const newRankings = await Promise.all(keywordPromises);
+
+    // Get existing rankings that weren't selected for update
+    const existingRankings = project.rankings || [];
+    const existingKeywords = existingRankings.map(r => r.keyword);
+
+    // Create a map of new rankings for quick lookup
+    const newRankingsMap = {};
+    newRankings.forEach(ranking => {
+      newRankingsMap[ranking.keyword] = ranking;
+    });
+
+    // Merge existing and new rankings
+    const mergedRankings = existingRankings.map(ranking => {
+      // If this keyword was updated, use the new ranking
+      if (newRankingsMap[ranking.keyword]) {
+        return newRankingsMap[ranking.keyword];
+      }
+      // Otherwise keep the existing ranking
+      return ranking;
+    });
+
+    // Add any new keywords that weren't in the existing rankings
+    newRankings.forEach(ranking => {
+      if (!existingKeywords.includes(ranking.keyword)) {
+        mergedRankings.push(ranking);
+      }
+    });
+
+    // Update project with merged rankings
+    project.rankings = mergedRankings;
+
+    // Save the project with the updated rankings
+    await project.save();
+
+    res.json(mergedRankings);
+  } catch (err) {
+    console.error(err.message);
+
+    // Check if error is due to invalid ObjectId format
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Project not found' });
+    }
+
+    res.status(500).send('Server error');
+  }
+}
+module.exports = { updateProject, getAllProjects, getSingleProject, deleteSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords };

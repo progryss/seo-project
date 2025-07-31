@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import Cookies from 'js-cookie';
 
 function AddProject() {
   const [formData, setFormData] = useState({
@@ -10,56 +11,56 @@ function AddProject() {
     websiteUrl: '',
     keywords: ''
   });
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const navigate = useNavigate();
-  
+
   const { websiteName, country, city, websiteUrl, keywords } = formData;
-  
+
   const handleChange = e => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
-  
+
   const handleSubmit = async e => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
+
     // Basic validation
     if (!websiteName || !country || !websiteUrl) {
       setError('Please fill in all required fields');
       setLoading(false);
       return;
     }
-    
+
     try {
-      const token = localStorage.getItem('token');
-      
+      const token = Cookies.get('userCookie');
+
       if (!token) {
         setError('Authentication error. Please login again.');
         setLoading(false);
         navigate('/admin');
         return;
       }
-      
+
       const config = {
         headers: {
-          'Content-Type': 'application/json',
-          'x-auth-token': token
-        }
-      };
-      
+          "Content-Type": "application/json"
+        },
+        withCredentials: true
+      }
+
       await axios.post(
-        'http://localhost:5000/api/projects',
+        `${process.env.REACT_APP_SERVER_URL}/api/projects`,
         formData,
         config
       );
-      
+
       setSuccess(true);
       setLoading(false);
-      
+
       // Clear form
       setFormData({
         websiteName: '',
@@ -68,12 +69,12 @@ function AddProject() {
         websiteUrl: '',
         keywords: ''
       });
-      
+
       // Redirect to projects page after 2 seconds
       setTimeout(() => {
         navigate('/projects');
-      }, 2000);
-      
+      }, 0);
+
     } catch (err) {
       setError(err.response?.data?.msg || 'Error creating project');
       setLoading(false);
@@ -83,7 +84,7 @@ function AddProject() {
   const handleBack = () => {
     navigate('/projects');
   };
-  
+
   return (
     <div className="add-project-container">
       <div className="add-project-header">
@@ -92,15 +93,15 @@ function AddProject() {
           Back to Projects
         </button>
       </div>
-      
+
       {success && (
         <div className="success-message">
           Project created successfully! Redirecting to projects page...
         </div>
       )}
-      
+
       {error && <div className="error-message">{error}</div>}
-      
+
       <form onSubmit={handleSubmit} className="project-form">
         <div className="form-group">
           <label htmlFor="websiteName">Website Name *</label>
@@ -114,7 +115,7 @@ function AddProject() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label htmlFor="country">Country *</label>
           <input
@@ -127,7 +128,7 @@ function AddProject() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label htmlFor="city">City (Optional)</label>
           <input
@@ -139,7 +140,7 @@ function AddProject() {
             placeholder="Enter city (optional)"
           />
         </div>
-        
+
         <div className="form-group">
           <label htmlFor="websiteUrl">Website URL *</label>
           <input
@@ -152,7 +153,7 @@ function AddProject() {
             required
           />
         </div>
-        
+
         <div className="form-group">
           <label htmlFor="keywords">Keywords (paste from Excel)</label>
           <textarea
@@ -167,10 +168,10 @@ function AddProject() {
             You can paste multiple keywords from Excel, separated by new lines, commas, or tabs.
           </small>
         </div>
-        
-        <button 
-          type="submit" 
-          className="submit-button" 
+
+        <button
+          type="submit"
+          className="submit-button"
           disabled={loading}
         >
           {loading ? 'Creating...' : 'Add Project'}

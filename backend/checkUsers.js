@@ -5,7 +5,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 // MongoDB Connection
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/seo-project';
+const MONGO_URI = process.env.MONGO_URI;
 
 async function checkUsers() {
   try {

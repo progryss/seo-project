@@ -11,13 +11,13 @@ function Projects() {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const res = await axios.get('http://localhost:5000/api/projects', {
+        const res = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects`, {
           headers: {
-            'x-auth-token': token
-          }
+            "Content-Type": "application/json"
+          },
+          withCredentials: true
         });
-        
+
         setProjects(res.data || []);
         setLoading(false);
       } catch (err) {
@@ -52,9 +52,9 @@ function Projects() {
           </button>
         </div>
       </div>
-      
+
       {error && <div className="error-message">{error}</div>}
-      
+
       <div className="projects-list">
         {projects.length === 0 ? (
           <div className="no-projects">
@@ -71,7 +71,7 @@ function Projects() {
               <p><strong>Location:</strong> {project.city ? `${project.city}, ${project.country}` : project.country}</p>
               <p><strong>Keywords:</strong> {project.keywords.length}</p>
               <div className="project-actions">
-                <button 
+                <button
                   className="view-button"
                   onClick={() => handleViewProject(project._id)}
                 >

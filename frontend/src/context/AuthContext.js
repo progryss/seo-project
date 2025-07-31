@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
+import Cookies from 'js-cookie';
 
 const AuthContext = createContext();
 
@@ -11,8 +12,9 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Check if token exists in localStorage
-    const token = localStorage.getItem('token');
+    // Check if token exists in cookies using js-cookie
+    const token = Cookies.get('userCookie');  // Get the token from cookies
+    console.log(token)
     if (token) {
       setIsAuthenticated(true);
     }
@@ -22,10 +24,17 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       setError(null);
-      const res = await axios.post('http://localhost:5000/api/login', { email, password });
-      
+      const res = await axios.post(`${process.env.REACT_APP_SERVER_URL}/api/login`,
+        { email, password },
+        {
+          headers: {
+            "Content-Type": "application/json"
+          },
+          withCredentials: true
+        }
+      );
+
       if (res.data && res.data.token) {
-        localStorage.setItem('token', res.data.token);
         setIsAuthenticated(true);
         return true;
       }
@@ -36,7 +45,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    Cookies.remove('userCookie'); 
     setIsAuthenticated(false);
   };
 
