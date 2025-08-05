@@ -623,6 +623,10 @@ body {
 }
 
 .keywords-table th:nth-child(1) {
+  width: 75px;
+}
+
+.keywords-table th:nth-child(2) {
   width: 30%;
 }
 
@@ -630,22 +634,6 @@ body {
   margin-right: 8px;
   cursor: pointer;
   vertical-align: middle;
-}
-
-.keywords-table th:nth-child(2) {
-  width: 14%;
-}
-
-.keywords-table th:nth-child(3) {
-  width: 16%;
-}
-
-.keywords-table th:nth-child(4) {
-  width: auto;
-}
-
-.keywords-table th:nth-child(5) {
-  width: 18%;
 }
 
 .keywords-table tr:hover {
@@ -813,4 +801,50 @@ body {
 
 .project-info tr:nth-child(even) {
   background-color: #dedede;
+}
+
+.pdpDetailTabberHeaderWrapper{
+  ul{
+    list-style-type: none;
+    display:flex ;
+    gap: 3px;
+
+    li{
+      border: 1px solid #ccc;
+      border-width: 0 1px 1px 0;
+      padding: 10px 20px;
+      cursor: pointer;
+
+      &.active {
+        background-color: #4a90e2;
+        color: white;
+      }
+    }
+  }
+}
+
+.pagination-container{
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  button {
+    padding: 0.5rem 1rem;
+    background-color: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+
+    &:disabled {
+      background-color: #b0bec5;
+      cursor: not-allowed;
+    }
+  }
+  .pagination-info{
+    margin: 0 10px;
+    font-size: 0.9rem;
+    color: #666;
+  }
 }

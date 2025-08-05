@@ -8,25 +8,25 @@ function Projects() {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
+  const fetchProjects = async () => {
+    try {
+      const res = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects`, {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        withCredentials: true
+      });
+
+      setProjects(res.data || []);
+      setLoading(false);
+    } catch (err) {
+      setError('Failed to load projects');
+      setLoading(false);
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const res = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects`, {
-          headers: {
-            "Content-Type": "application/json"
-          },
-          withCredentials: true
-        });
-
-        setProjects(res.data || []);
-        setLoading(false);
-      } catch (err) {
-        setError('Failed to load projects');
-        setLoading(false);
-        console.error(err);
-      }
-    };
-
     fetchProjects();
   }, []);
 
@@ -39,7 +39,7 @@ function Projects() {
   };
 
   if (loading) {
-    return <div className="loading">Loading projects...</div>;
+    return <div className="loading" style={{height:'75vh',display:'flex',justifyContent:'center',alignItems:'center'}}>Loading projects...</div>;
   }
 
   return (

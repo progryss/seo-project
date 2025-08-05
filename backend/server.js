@@ -1,13 +1,14 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const dotenv = require('dotenv');
+require('dotenv').config();
 const cookieParser = require('cookie-parser');
 
 const { updateProject, getAllProjects, deleteSingleProject, getSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords } = require('./controllers/projectControllers.js');
 const auth = require('./middlewares/auth.js');
 const initAdminUser = require('./middlewares/createAdminUser.js');
 const { login } = require('./controllers/userControllers.js');
+const { getAnalytics } = require('./services/google_search_console/getAnalytics.js');
 
 // Create Express app
 const app = express();
@@ -59,6 +60,7 @@ app.get('/api/projects/:id/rankings', auth, updateRankingForProject);
 // Check rankings for selected keywords only
 app.post('/api/projects/:id/check-rankings', auth, checkRankingForSelectedKeywords);
 
+app.post('/api/projects/:id/analytics', auth, getAnalytics);
 
 // Start server
 const PORT = process.env.PORT;
