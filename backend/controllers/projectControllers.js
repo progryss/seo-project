@@ -1,5 +1,7 @@
 const axios = require('axios');
 const Bottleneck = require('bottleneck');
+require('dotenv').config();
+
 
 // 1. Setup Bottleneck limiter (base settings as per API docs)
 const limiter = new Bottleneck({
@@ -270,7 +272,7 @@ const updateRankingForProject = async (req, res) => {
           maxBodyLength: Infinity,
           url: 'https://google.serper.dev/search',
           headers: {
-            'X-API-KEY': 'd08413c2e0c14cf82b3b93c47d1950886970b69e',
+            'X-API-KEY': process.env.SERPER_API_KEY,
             'Content-Type': 'application/json'
           },
           data: data

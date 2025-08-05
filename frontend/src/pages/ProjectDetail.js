@@ -2,9 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Cookies from 'js-cookie';
-
+import TextField from '@mui/material/TextField';
+import QueryTable from '../components/queryTable';
+import Button from '@mui/material/Button';
+import TuneIcon from '@mui/icons-material/Tune';
 function ProjectDetail() {
+
   const [project, setProject] = useState(null);
+  const [tabberState, setTabberState] = useState('keywords');
   const [sortOrder, setSortOrder] = useState(false)
   const [rankings, setRankings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +48,7 @@ function ProjectDetail() {
           return acc;
         }, {});
 
-        console.log(rankingMap)
+        // console.log(rankingMap)
 
         const sortedKeywords = projectRes.data.keywords.sort((a, b) => {
           const rankA = rankingMap[a] !== undefined ? (rankingMap[a] === null ? Infinity : rankingMap[a]) : Infinity;
@@ -58,8 +63,8 @@ function ProjectDetail() {
           keywords: sortedKeywords,
           rankings: sortedRanking
         };
-        console.log(sortedData)
-        console.log(rankingMap)
+        // console.log(sortedData)
+        // console.log(rankingMap)
 
         setProject(sortedData);
 
@@ -149,7 +154,7 @@ function ProjectDetail() {
       setRankings(res.data);
       setProject({
         ...project,
-        rankings:res.data
+        rankings: res.data
       })
       setRankingsLoading(false);
       setSelectAll(false);
@@ -168,7 +173,7 @@ function ProjectDetail() {
     }
 
     // Create CSV header row
-    const csvHeader = ['Keyword', 'Ranking', 'Ranking URL', 'Last Checked'];
+    const csvHeader = ['Keyword', 'Ranking', 'Previous Ranking', 'Ranking URL', 'Last Checked'];
 
     // Create CSV data rows
     const csvData = project.keywords.map(keyword => {
@@ -177,6 +182,7 @@ function ProjectDetail() {
       return [
         keyword,
         rankingData.ranking ? `#${rankingData.ranking}` : (rankings.length > 0 ? 'Not in top 100' : '-'),
+        rankingData.previousRanking || '-',
         rankingData.rankingUrl || '-',
         rankingData.checkedAt ? new Date(rankingData.checkedAt).toLocaleString() : '-'
       ];
@@ -333,8 +339,10 @@ function ProjectDetail() {
           <div>
             <table>
               <thead>
-                <th>Keyword Rank</th>
-                <th>Count</th>
+                <tr>
+                  <th>Keyword Rank</th>
+                  <th>Count</th>
+                </tr>
               </thead>
               <tbody>
                 <tr>
@@ -364,29 +372,11 @@ function ProjectDetail() {
 
         <div className="detail-section">
           <div className="section-header">
-            <h2>Keywords ({project.keywords.length})</h2>
-            <div className="rankings-actions">
-              <div className="selected-count">
-                {selectedKeywords.length} of {project.keywords.length} selected
-              </div>
-              {!rankingsLoading && (
-                <>
-                  <button
-                    onClick={fetchKeywordRankings}
-                    className="check-rankings-button"
-                    disabled={rankingsLoading || selectedKeywords.length === 0}
-                  >
-                    {rankings.length > 0 ? 'Refresh Rankings' : 'Check Rankings'}
-                  </button>
-                  <button
-                    onClick={exportToCSV}
-                    className="export-csv-button"
-                    disabled={project.keywords.length === 0}
-                  >
-                    Export CSV
-                  </button>
-                </>
-              )}
+            <div className='pdpDetailTabberHeaderWrapper'>
+              <ul>
+                <li className={tabberState === 'keywords' ? 'active' : ''} onClick={() => setTabberState('keywords')}>Keywords ({project.keywords.length})</li>
+                <li className={tabberState === 'queries' ? 'active' : ''} onClick={() => setTabberState('queries')}>Console</li>
+              </ul>
             </div>
           </div>
 
@@ -396,15 +386,44 @@ function ProjectDetail() {
             </div>
           )}
 
+          {tabberState === 'keywords' && (
+            <div className="rankings-actions" style={{justifyContent: 'space-between'}}>
+              <div className="selected-count">
+                {selectedKeywords.length} of {project.keywords.length} selected
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {!rankingsLoading && (
+                  <>
+                    <button
+                      onClick={fetchKeywordRankings}
+                      className="check-rankings-button"
+                      disabled={rankingsLoading || selectedKeywords.length === 0}
+                    >
+                      {rankings.length > 0 ? 'Refresh Rankings' : 'Check Rankings'}
+                    </button>
+                    <button
+                      onClick={exportToCSV}
+                      className="export-csv-button"
+                      disabled={project.keywords.length === 0}
+                    >
+                      Export CSV
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {rankingsLoading ? (
             <div className="loading">Fetching keyword rankings...</div>
           ) : (
             <>
-              {project.keywords.length > 0 ? (
+              {project.keywords.length > 0 && tabberState === "keywords" ? (
                 <div className="keywords-table-container">
                   <table className="keywords-table">
                     <thead>
                       <tr>
+                        <th>S No.</th>
                         <th>
                           <input
                             type="checkbox"
@@ -415,17 +434,17 @@ function ProjectDetail() {
                           Keyword
                         </th>
                         <th onClick={() => handleSort(true)} style={{ cursor: 'pointer' }}>Ranking
-                          <span style={{ float: 'right', marginRight: '20px', marginTop: '2px' }}>
+                          <span style={{ float: 'right', marginRight: '-10px', marginTop: '2px' }}>
                             <svg style={sortOrder ? { transform: 'rotate(180deg)' } : { transform: 'rotate(0)' }} xmlns="http://www.w3.org/2000/svg" fill="#000000" width="12px" height="12px" viewBox="0 0 24 24" stroke="#000000">
-                              <g id="SVGRepo_bgCarrier" stroke-width="0" />
-                              <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round" />
+                              <g id="SVGRepo_bgCarrier" strokeWidth="0" />
+                              <g id="SVGRepo_tracerCarrier" strokeLinecap="round" strokeLinejoin="round" />
                               <g id="SVGRepo_iconCarrier">
                                 <path d="M11.178 19.569a.998.998 0 0 0 1.644 0l9-13A.999.999 0 0 0 21 5H3a1.002 1.002 0 0 0-.822 1.569l9 13z" />
                               </g>
                             </svg>
                           </span>
                         </th>
-                        <th>Previous Ranking</th>
+                        <th style={{ minWidth: '160px' }}>Previous Ranking</th>
                         <th>Ranking URL</th>
                         <th>Last Checked</th>
                       </tr>
@@ -433,9 +452,11 @@ function ProjectDetail() {
                     <tbody>
                       {project.keywords.map((keyword, index) => {
                         const rankingData = rankings.find(r => r.keyword === keyword) || {};
+                        const rankColorStatus = rankingData.ranking === null ? { color: '#000' } : rankingData.ranking == rankingData.previousRanking ? { color: '#000' } : rankingData.ranking > rankingData.previousRanking ? { color: '#f44336' } : { color: '#4caf50' };
 
                         return (
                           <tr key={index}>
+                            <td>{index + 1}</td>
                             <td>
                               <input
                                 type="checkbox"
@@ -445,7 +466,7 @@ function ProjectDetail() {
                               />
                               {keyword}
                             </td>
-                            <td className={rankingData.ranking ? 'ranking-value' : ''} style={rankingData.ranking === null ? {color:'#000'} : rankingData.ranking > rankingData.previousRanking ? {color:'#f44336'}:{color:'#4caf50'}}>
+                            <td className={rankingData.ranking ? 'ranking-value' : ''} style={{ ...rankColorStatus, minWidth: '110px' }}>
                               {rankingData.ranking === null ? 'Not in 100' : rankingData.ranking === undefined ? '-' : rankingData.ranking}
                             </td>
                             <td className={rankingData.previousRanking ? 'prev-ranking-value' : ''}>
@@ -478,11 +499,13 @@ function ProjectDetail() {
                     </tbody>
                   </table>
                 </div>
-              ) : (
+              ) : project.keywords.length === 0 && tabberState === "keywords" ? (
                 <p className="no-keywords">No keywords added for this project.</p>
+              ) : tabberState === "queries" ? (<QueryTable site={project.websiteUrl} />) : (
+                <p className="no-keywords">No Query available.</p>
               )}
 
-              {rankings.length > 0 && (
+              {rankings.length > 0 && tabberState === "keywords" && (
                 <div className="rankings-info">
                   <small>
                     Rankings checked in {rankings[0]?.searchEngine || 'Google'} on {

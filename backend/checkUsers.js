@@ -1,8 +1,5 @@
 const mongoose = require('mongoose');
-const dotenv = require('dotenv');
-
-// Load environment variables
-dotenv.config();
+require('dotenv').config();
 
 // MongoDB Connection
 const MONGO_URI = process.env.MONGO_URI;
