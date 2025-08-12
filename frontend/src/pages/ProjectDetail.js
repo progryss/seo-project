@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Cookies from 'js-cookie';
-import TextField from '@mui/material/TextField';
 import QueryTable from '../components/queryTable';
-import Button from '@mui/material/Button';
-import TuneIcon from '@mui/icons-material/Tune';
+import { Button, Chip, CircularProgress } from '@mui/material';
+import { toast } from 'react-toastify';
+
 function ProjectDetail() {
+
+  const { id } = useParams();
+  const navigate = useNavigate();
 
   const [project, setProject] = useState(null);
   const [tabberState, setTabberState] = useState('keywords');
@@ -18,86 +21,75 @@ function ProjectDetail() {
   const [rankingsError, setRankingsError] = useState(null);
   const [selectedKeywords, setSelectedKeywords] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
-  const { id } = useParams();
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchProjectAndRankings = async () => {
-      try {
-        const token = Cookies.get('userCookie');
-        if (!token) {
-          navigate('/admin');
-          return;
-        }
+  const [isLinkSheetLoading, setIsLinkSheetLoading] = useState(false);
+  const [isUpdateSheetRankingLoading, setUpdateSheetRankingLoading] = useState(false);
 
-        const projectRes = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}`, {
-          headers: {
-            "Content-Type": "application/json"
-          },
-          withCredentials: true
-        });
-
-        const sortedRanking = projectRes.data.rankings.sort((a, b) => {
-          if (a.ranking === null) return 1;
-          if (b.ranking === null) return -1;
-          return b.ranking - a.ranking;
-        })
-
-        const rankingMap = sortedRanking.reduce((acc, { keyword, ranking }) => {
-          acc[keyword] = ranking; // Store keyword -> ranking pair
-          return acc;
-        }, {});
-
-        // console.log(rankingMap)
-
-        const sortedKeywords = projectRes.data.keywords.sort((a, b) => {
-          const rankA = rankingMap[a] !== undefined ? (rankingMap[a] === null ? Infinity : rankingMap[a]) : Infinity;
-          const rankB = rankingMap[b] !== undefined ? (rankingMap[b] === null ? Infinity : rankingMap[b]) : Infinity;
-
-          // Ascending order
-          return rankA - rankB;
-        });
-
-        const sortedData = {
-          ...projectRes.data,
-          keywords: sortedKeywords,
-          rankings: sortedRanking
-        };
-        // console.log(sortedData)
-        // console.log(rankingMap)
-
-        setProject(sortedData);
-
-        // Fetch saved rankings if they exist
-        const rankingsRes = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}/saved-rankings`, {
-          headers: {
-            "Content-Type": "application/json"
-          },
-          withCredentials: true
-        });
-
-        if (rankingsRes.data && rankingsRes.data.length > 0) {
-          setRankings(rankingsRes.data);
-        }
-
-        setLoading(false);
-      } catch (err) {
-        setError(err.response?.data?.msg || 'Error fetching project details');
-        setLoading(false);
-        console.error(err);
+  const fetchProjectAndRankings = async () => {
+    try {
+      const token = Cookies.get('userCookie');
+      if (!token) {
+        navigate('/admin');
+        return;
       }
-    };
 
-    fetchProjectAndRankings();
-  }, [id, navigate]);
+      const projectRes = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}`, {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        withCredentials: true
+      });
 
-  // Set up selected keywords when project data is loaded
-  useEffect(() => {
-    if (project && project.keywords) {
-      setSelectedKeywords([]);
-      setSelectAll(false);
+      const sortedRanking = projectRes.data.rankings.sort((a, b) => {
+        if (a.ranking === null) return 1;
+        if (b.ranking === null) return -1;
+        return b.ranking - a.ranking;
+      })
+
+      const rankingMap = sortedRanking.reduce((acc, { keyword, ranking }) => {
+        acc[keyword] = ranking; // Store keyword -> ranking pair
+        return acc;
+      }, {});
+
+      // console.log(rankingMap)
+
+      const sortedKeywords = projectRes.data.keywords.sort((a, b) => {
+        const rankA = rankingMap[a] !== undefined ? (rankingMap[a] === null ? Infinity : rankingMap[a]) : Infinity;
+        const rankB = rankingMap[b] !== undefined ? (rankingMap[b] === null ? Infinity : rankingMap[b]) : Infinity;
+
+        // Ascending order
+        return rankA - rankB;
+      });
+
+      const sortedData = {
+        ...projectRes.data,
+        keywords: sortedKeywords,
+        rankings: sortedRanking
+      };
+      // console.log(sortedData)
+      // console.log(rankingMap)
+
+      setProject(sortedData);
+
+      // Fetch saved rankings if they exist
+      const rankingsRes = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}/saved-rankings`, {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        withCredentials: true
+      });
+
+      if (rankingsRes.data && rankingsRes.data.length > 0) {
+        setRankings(rankingsRes.data);
+      }
+
+      setLoading(false);
+    } catch (err) {
+      setError(err.response?.data?.msg || 'Error fetching project details');
+      setLoading(false);
+      console.error(err);
     }
-  }, [project]);
+  };
 
   // Handle select all checkbox
   const handleSelectAll = () => {
@@ -151,11 +143,12 @@ function ProjectDetail() {
         }
       );
 
-      setRankings(res.data);
       setProject({
         ...project,
         rankings: res.data
       })
+
+      setRankings(res.data);
       setRankingsLoading(false);
       setSelectAll(false);
       setSelectedKeywords([]);
@@ -219,17 +212,15 @@ function ProjectDetail() {
     document.body.removeChild(link);
   };
 
-  const handleBack = () => {
-    navigate('/projects');
-  };
-
-  const handleEdit = () => {
-    navigate(`/project/edit/${id}`);
-  };
-
+  // delete project
   const handleDelete = async () => {
+
+    let confirmDelete = window.confirm("Are you sure you want to delete this project? This action cannot be undone.");
+    if (!confirmDelete) {
+      return;
+    }
     // Send selected keywords to backend
-    const res = await axios.delete(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}`,
+    await axios.delete(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}`,
       {
         headers: {
           "Content-Type": "application/json"
@@ -241,8 +232,11 @@ function ProjectDetail() {
     setTimeout(() => {
       navigate('/projects');
     }, 0);
+
+    toast.success('Project deleted successfully!')
   };
 
+  // shorting
   const handleSort = () => {
     setSortOrder(!sortOrder)
     console.log(project)
@@ -273,6 +267,69 @@ function ProjectDetail() {
     })
   }
 
+  // link google sheet
+  const linkSheetToProject = async () => {
+
+    try {
+      setIsLinkSheetLoading(true)
+      const payload = {
+        spreadsheetUrl: project.spreadsheet.spreadsheetUrl
+      }
+      const response = await axios.post(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}/link-sheet`, payload, {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        withCredentials: true,
+      });
+      setProject(response.data.project);
+      toast.success(response.data.message)
+    } catch (error) {
+      console.log('Error linking sheet:', error);
+      toast.error('Error linking spreadsheet to project')
+    } finally {
+      setIsLinkSheetLoading(false)
+    }
+  }
+
+  // update sheet ranking in google sheet
+  const updateSheetRanking = async () => {
+    try {
+      setUpdateSheetRankingLoading(true)
+      const response = await axios.get(`${process.env.REACT_APP_SERVER_URL}/api/projects/${id}/update-googlesheet`, {
+        headers: {
+          "Content-Type": "application/json"
+        },
+        withCredentials: true,
+      });
+      toast.success(response.data)
+    } catch (error) {
+      console.log(error)
+      toast.error('Error in Updating Google Sheet')
+    } finally {
+      setUpdateSheetRankingLoading(false)
+    }
+  }
+
+  const handleBack = () => {
+    navigate('/projects');
+  };
+
+  const handleEdit = () => {
+    navigate(`/project/edit/${id}`);
+  };
+
+  useEffect(() => {
+    fetchProjectAndRankings();
+  }, [id, navigate]);
+
+  // Set up selected keywords when project data is loaded
+  useEffect(() => {
+    if (project && project.keywords) {
+      setSelectedKeywords([]);
+      setSelectAll(false);
+    }
+  }, [project]);
+
   if (loading) {
     return <div className="loading">Loading project details...</div>;
   }
@@ -291,24 +348,25 @@ function ProjectDetail() {
   return (
     <div className="project-detail-container">
       <div className="project-detail-header">
-        <h1>{project.websiteName}</h1>
-        <div className="header-buttons">
-          <button onClick={handleDelete} className="logout-button">
+        <div>
+          <Button variant="contained" size='small' color="error" onClick={() => { handleDelete() }}>
             Delete Project
-          </button>
-          <button onClick={handleEdit} className="edit-button">
+          </Button>
+        </div>
+        <div className="header-buttons">
+          <Button variant="outlined" size='small' color="warning" onClick={() => { handleEdit() }}>
             Edit Project
-          </button>
-          <button onClick={handleBack} className="back-button">
+          </Button>
+          <Button variant="outlined" size='small' color="secondary" onClick={() => { handleBack() }}>
             Back to Projects
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="project-detail-content">
         <div className="detail-section project-info">
           <div>
-            <h2>Website Information</h2>
+            <h2 style={{ marginBottom: '20px', color: '#000' }}>{project.websiteName}</h2>
             <div className="detail-item">
               <span className="detail-label">Website URL:</span>
               <a href={project.websiteUrl} target="_blank" rel="noopener noreferrer" className="detail-value url-value">
@@ -326,7 +384,81 @@ function ProjectDetail() {
               </div>
             )}
             <div className="detail-item">
-              <span className="detail-label">Created:</span>
+              <span className="detail-label">Google Sheet:</span>
+              <span className="detail-value">
+                {project.spreadsheet.spreadsheetTitle ?
+                  (
+                    <>
+                      <div style={{ display: 'flex', gap: '100px', alignItems: 'end' }}>
+                        <p>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 64 88" height={23} style={{ position: 'relative', bottom: '-3px' }}>
+                            <path
+                              d="M 42,0 64,22 53,24 42,22 40,11 Z"
+                              fill="#188038" />
+                            <path
+                              d="M 42,22 V 0 H 6 C 2.685,0 0,2.685 0,6 v 76 c 0,3.315 2.685,6 6,6 h 52 c 3.315,0 6,-2.685 6,-6 V 22 Z"
+                              fill="#34a853" />
+                            <path
+                              d="M 12,34 V 63 H 52 V 34 Z M 29.5,58 H 17 v -7 h 12.5 z m 0,-12 H 17 V 39 H 29.5 Z M 47,58 H 34.5 V 51 H 47 Z M 47,46 H 34.5 V 39 H 47 Z"
+                              fill="#fff" />
+                          </svg>
+                          <span style={{ marginLeft: '5px', textTransform: 'uppercase', fontWeight: '600' }}>{project.spreadsheet.spreadsheetTitle} - </span>
+                          <span style={{ fontSize: '14px' }}>{project.spreadsheet.sheets[0].tabName}</span>
+                        </p>
+                        <Chip
+                          variant='outlined'
+                          label={
+                            isUpdateSheetRankingLoading ? (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <CircularProgress size={14} color="inherit" />
+                                Updating...
+                              </span>
+                            ) : (
+                              'Update Sheet Ranking'
+                            )
+                          }
+                          size="small"
+                          sx={{ width: '170px' }}
+                          color="primary"
+                          onClick={() => {
+                            if (!isUpdateSheetRankingLoading) updateSheetRanking();
+                          }}
+                          clickable={!isUpdateSheetRankingLoading} // disables click during loading
+                        />
+                      </div>
+                    </>
+                  )
+                  : !project.spreadsheet.spreadsheetTitle && project.spreadsheet.spreadsheetUrl != '' ?
+                    (
+                      <Chip
+                        variant='outlined'
+                        label={
+                          isLinkSheetLoading ? (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <CircularProgress size={14} color="inherit" />
+                              linking...
+                            </span>
+                          ) : (
+                            'Link Your Sheet Here'
+                          )
+                        }
+                        size="small"
+                        sx={{ width: '170px' }}
+                        color="primary"
+                        onClick={() => {
+                          if (!isLinkSheetLoading) linkSheetToProject();
+                        }}
+                        clickable={!isLinkSheetLoading} // disables click during loading
+                      />
+                    )
+                    : <Chip variant='outlined' sx={{ cursor: 'not-allowed' }} label="URL Not Provided" size="small" color="secondary" />
+                }
+              </span>
+            </div>
+            <div className="detail-item">
+              <span className="detail-label">Created on:</span>
               <span className="detail-value">
                 {new Date(project.createdAt).toLocaleDateString('en-US', {
                   year: 'numeric',
@@ -375,7 +507,7 @@ function ProjectDetail() {
             <div className='pdpDetailTabberHeaderWrapper'>
               <ul>
                 <li className={tabberState === 'keywords' ? 'active' : ''} onClick={() => setTabberState('keywords')}>Keywords ({project.keywords.length})</li>
-                <li className={tabberState === 'queries' ? 'active' : ''} onClick={() => setTabberState('queries')}>Console</li>
+                <li className={tabberState === 'queries' ? 'active' : ''} onClick={() => setTabberState('queries')}>Search Console</li>
               </ul>
             </div>
           </div>
@@ -387,27 +519,19 @@ function ProjectDetail() {
           )}
 
           {tabberState === 'keywords' && (
-            <div className="rankings-actions" style={{justifyContent: 'space-between'}}>
-              <div className="selected-count">
+            <div className="rankings-actions" style={{ justifyContent: 'space-between' }}>
+              <div className="selected-count" style={{ paddingLeft: '15px' }}>
                 {selectedKeywords.length} of {project.keywords.length} selected
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 {!rankingsLoading && (
                   <>
-                    <button
-                      onClick={fetchKeywordRankings}
-                      className="check-rankings-button"
-                      disabled={rankingsLoading || selectedKeywords.length === 0}
-                    >
+                    <Button variant="contained" size='small' color="primary" onClick={() => { fetchKeywordRankings() }} disabled={rankingsLoading || selectedKeywords.length === 0}>
                       {rankings.length > 0 ? 'Refresh Rankings' : 'Check Rankings'}
-                    </button>
-                    <button
-                      onClick={exportToCSV}
-                      className="export-csv-button"
-                      disabled={project.keywords.length === 0}
-                    >
+                    </Button>
+                    <Button variant="outlined" size='small' color="success" onClick={() => { exportToCSV() }} disabled={project.keywords.length === 0}>
                       Export CSV
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
@@ -452,7 +576,10 @@ function ProjectDetail() {
                     <tbody>
                       {project.keywords.map((keyword, index) => {
                         const rankingData = rankings.find(r => r.keyword === keyword) || {};
-                        const rankColorStatus = rankingData.ranking === null ? { color: '#000' } : rankingData.ranking == rankingData.previousRanking ? { color: '#000' } : rankingData.ranking > rankingData.previousRanking ? { color: '#f44336' } : { color: '#4caf50' };
+                        const rankColorStatus = rankingData.ranking === rankingData.previousRanking ? { color: '#555555' }
+                          : (rankingData.ranking > rankingData.previousRanking && rankingData.previousRanking != null) ||
+                            (rankingData.ranking === null && rankingData.previousRanking != null) ? { color: '#f44336' }
+                            : { color: '#4caf50' };
 
                         return (
                           <tr key={index}>
@@ -524,4 +651,4 @@ function ProjectDetail() {
   );
 }
 
-export default ProjectDetail; 
+export default ProjectDetail;

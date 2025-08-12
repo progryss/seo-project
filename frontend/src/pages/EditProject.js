@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Cookies from 'js-cookie';
+import { toast } from 'react-toastify';
 
 function EditProject() {
   const [formData, setFormData] = useState({
@@ -9,6 +10,7 @@ function EditProject() {
     country: '',
     city: '',
     websiteUrl: '',
+    spreadsheetUrl: '',
     keywords: ''
   });
 
@@ -19,7 +21,7 @@ function EditProject() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { websiteName, country, city, websiteUrl, keywords } = formData;
+  const { websiteName, country, city, websiteUrl,spreadsheetUrl, keywords } = formData;
 
   // Fetch project data on component mount
   useEffect(() => {
@@ -48,6 +50,7 @@ function EditProject() {
           country: res.data.country || '',
           city: res.data.city || '',
           websiteUrl: res.data.websiteUrl || '',
+          spreadsheetUrl: res.data.spreadsheet.spreadsheetUrl || '',
           keywords: keywordsString || ''
         });
 
@@ -88,6 +91,8 @@ function EditProject() {
         return;
       }
 
+      // const toastId = toast.loading('Updating project...');
+
       const config = {
         headers: {
           "Content-Type": "application/json"
@@ -101,13 +106,16 @@ function EditProject() {
         config
       );
 
+      // toast.dismiss(toastId);
+      toast.success('Project updated successfully!');
+
       setSuccess(true);
       setSubmitting(false);
 
       // Redirect to project details page after 2 seconds
       setTimeout(() => {
         navigate(`/project/${id}`);
-      },0);
+      }, 0);
 
     } catch (err) {
       setError(err.response?.data?.msg || 'Error updating project');
@@ -141,6 +149,8 @@ function EditProject() {
       {error && <div className="error-message">{error}</div>}
 
       <form onSubmit={handleSubmit} className="project-form">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "20px" }}>
+        <div>
         <div className="form-group">
           <label htmlFor="websiteName">Website Name *</label>
           <input
@@ -193,6 +203,21 @@ function EditProject() {
         </div>
 
         <div className="form-group">
+          <label htmlFor="spreadsheetUrl">Google Sheet URL *</label>
+          <input
+            type="url"
+            id="spreadsheetUrl"
+            name="spreadsheetUrl"
+            value={spreadsheetUrl}
+            onChange={handleChange}
+            placeholder="Enter Google Sheet URL"
+          />
+        </div>
+
+        </div>
+        <div>
+
+        <div className="form-group">
           <label htmlFor="keywords">Keywords (one per line)</label>
           <textarea
             id="keywords"
@@ -205,6 +230,8 @@ function EditProject() {
           <small className="form-text">
             You can paste multiple keywords from Excel, separated by new lines, commas, or tabs.
           </small>
+        </div>
+        </div>
         </div>
 
         <div className="form-actions">

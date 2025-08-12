@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { Button } from '@mui/material';
 
 function Header() {
   const { isAuthenticated, logout } = useAuth();
@@ -16,18 +17,18 @@ function Header() {
       <div className="header-container">
         <div className="logo">
           <Link to={isAuthenticated ? '/projects' : '/'}>
-            <h1>SEO Project</h1>
+            <h1 style={{color:'#000'}}>SEO Project</h1>
           </Link>
         </div>
-        
+
         <nav className="main-nav">
           {isAuthenticated ? (
             <>
               <Link to="/projects" className="nav-link">Projects</Link>
               <Link to="/add-project" className="nav-link">Add Project</Link>
-              <button onClick={handleLogout} className="logout-nav-button">
+              <Button variant="outlined" size='small' color="error" onClick={() => { handleLogout() }}>
                 Logout
-              </button>
+              </Button>
             </>
           ) : (
             <Link to="/admin" className="nav-link">Login</Link>
