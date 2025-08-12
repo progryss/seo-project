@@ -4,11 +4,11 @@ const cors = require('cors');
 require('dotenv').config();
 const cookieParser = require('cookie-parser');
 
-const { updateProject, getAllProjects, deleteSingleProject, getSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords } = require('./controllers/projectControllers.js');
+const { updateGoogleSheet, linkSheetToProject ,updateProject, getAllProjects, deleteSingleProject, getSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords } = require('./controllers/projectControllers.js');
 const auth = require('./middlewares/auth.js');
 const initAdminUser = require('./middlewares/createAdminUser.js');
 const { login } = require('./controllers/userControllers.js');
-const { getAnalytics } = require('./services/google_search_console/getAnalytics.js');
+const { getAnalytics } = require('./services/google/getAnalytics.js');
 
 // Create Express app
 const app = express();
@@ -36,6 +36,7 @@ app.use(express.json());
 app.post('/api/login', login);
 
 // Project Routes
+
 // Get all projects
 app.get('/api/projects', auth, getAllProjects);
 
@@ -61,6 +62,8 @@ app.get('/api/projects/:id/rankings', auth, updateRankingForProject);
 app.post('/api/projects/:id/check-rankings', auth, checkRankingForSelectedKeywords);
 
 app.post('/api/projects/:id/analytics', auth, getAnalytics);
+app.get('/api/projects/:id/update-googlesheet', auth, updateGoogleSheet);
+app.post('/api/projects/:id/link-sheet', auth, linkSheetToProject);
 
 // Start server
 const PORT = process.env.PORT;

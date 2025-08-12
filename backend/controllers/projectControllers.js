@@ -2,6 +2,9 @@ const axios = require('axios');
 const Bottleneck = require('bottleneck');
 require('dotenv').config();
 
+const Project = require('../models/projects/projectModel.js')
+const { googlesheets } = require('../services/google/index.js');
+const updateSpreadsheet = require('../services/google/updateSpreadsheet.js')
 
 // 1. Setup Bottleneck limiter (base settings as per API docs)
 const limiter = new Bottleneck({
@@ -12,7 +15,6 @@ const limiter = new Bottleneck({
 // 2. Helper: sleep for X ms
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 
-const Project = require('../models/projects/projectModel.js')
 
 const getAllProjects = async (req, res) => {
   try {
@@ -25,7 +27,7 @@ const getAllProjects = async (req, res) => {
 }
 
 const updateProject = async (req, res) => {
-  const { websiteName, country, city, websiteUrl, keywords } = req.body;
+  const { websiteName, country, city, websiteUrl, keywords, spreadsheetUrl } = req.body;
 
   try {
     let project = await Project.findById(req.params.id);
@@ -48,6 +50,9 @@ const updateProject = async (req, res) => {
         keywordsArray.some(keyword => item.keyword === keyword)
       );
     }
+    let spreadsheetData = {
+      spreadsheetUrl: spreadsheetUrl,
+    }
 
     // Build project object
     const projectFields = {
@@ -55,8 +60,9 @@ const updateProject = async (req, res) => {
       country: country || project.country,
       city: city,
       websiteUrl: websiteUrl || project.websiteUrl,
+      spreadsheet: spreadsheetData,
       keywords: keywordsArray || project.keywords,
-      rankings: rankingArray
+      rankings: rankingArray,
     };
 
     // Update project
@@ -116,7 +122,7 @@ const deleteSingleProject = async (req, res) => {
 }
 
 const createProject = async (req, res) => {
-  const { websiteName, country, city, websiteUrl, keywords } = req.body;
+  const { websiteName, country, city, websiteUrl, keywords, spreadsheetUrl } = req.body;
 
   try {
     // Process keywords if they come as a string (from Excel paste)
@@ -134,7 +140,11 @@ const createProject = async (req, res) => {
       country,
       city,
       websiteUrl,
-      keywords: keywordsArray
+      spreadsheet: {
+        spreadsheetUrl: spreadsheetUrl || '',
+      },
+      keywords: keywordsArray,
+      rankings: []
     });
 
     const project = await newProject.save();
@@ -297,7 +307,7 @@ const updateRankingForProject = async (req, res) => {
         return {
           keyword,
           ranking,
-          previousRanking: rankingData.ranking || 1,
+          previousRanking: rankingData.ranking || null,
           rankingUrl,
           searchEngine: `google.${gl}`
         };
@@ -457,7 +467,6 @@ const checkRankingForSelectedKeywords = async (req, res) => {
         };
 
         const response = await axios.request(config);
-        console.log(response.status)
         const searchResults = response.data.organic || [];
 
         // --- Handle Rate Limit Headers ---
@@ -550,7 +559,7 @@ const checkRankingForSelectedKeywords = async (req, res) => {
     // Save the project with the updated rankings
     await project.save();
 
-    res.json(mergedRankings);
+    res.status(200).send(project.rankings);
   } catch (err) {
     console.error(err.message);
 
@@ -562,4 +571,73 @@ const checkRankingForSelectedKeywords = async (req, res) => {
     res.status(500).send('Server error');
   }
 }
-module.exports = { updateProject, getAllProjects, getSingleProject, deleteSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords };
+
+// link google sheet to project
+const linkSheetToProject = async (req, res) => {
+
+  try {
+
+    const { spreadsheetUrl } = req.body;
+
+    if (!spreadsheetUrl) {
+      return res.status(400).json({ msg: 'Spreadsheet URL is required' });
+    }
+
+    // getting spreadsheet ids from the URL
+    function getSpreadsheetIds(sheetUrl) {
+      const idMatch = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+
+      return idMatch ? idMatch[1] : null;
+    }
+
+    let sheetId = getSpreadsheetIds(spreadsheetUrl);
+    const meta = await googlesheets.spreadsheets.get({ spreadsheetId: sheetId });
+
+    const sheetInfo = {
+      spreadsheetUrl: spreadsheetUrl,
+      spreadsheetId: meta.data.spreadsheetId,
+      spreadsheetTitle: meta.data.properties.title,
+      sheets: meta.data.sheets.map(sheet => ({
+        tabName: sheet.properties.title,
+        sheetId: sheet.properties.sheetId,
+        index: sheet.properties.index || 0,
+        hidden: sheet.properties.hidden || false,
+        rowCount: sheet.properties.gridProperties.rowCount || 0,
+        columnCount: sheet.properties.gridProperties.columnCount || 0
+      }))
+    }
+
+    let project = await Project.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          spreadsheet: sheetInfo
+        }
+      },
+      { new: true }
+    );
+    res.status(200).send({
+      project: project,
+      message: 'Spreadsheet linked successfully'
+    });
+
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send({
+      message: 'Error linking spreadsheet to project'
+    });
+  }
+}
+
+const updateGoogleSheet = async (req, res) => {
+
+  try {
+    let response = await updateSpreadsheet(req.params.id)
+    res.status(200).send('Google Sheet Updated Successfully')
+  } catch (error) {
+    console.log('error in updating sheet')
+    res.status(500).send('Error in Updating Google Sheet !')
+  }
+}
+
+module.exports = { updateGoogleSheet, updateProject, linkSheetToProject, getAllProjects, getSingleProject, deleteSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords };

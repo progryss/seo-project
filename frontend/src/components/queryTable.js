@@ -87,14 +87,9 @@ function QueryTable({ site }) {
 
     const fetchAnalyticsByCustomDate = async () => {
         pageNo === 1 ? setPageNo(1) : setPageNo(1);
-        // Show loading toast and save its id
-        const toastId = toast.loading("Loading Results ...");
-        setLoadingToastId(toastId);
         setLoading(true);
         setDates({ ...dates, startDate: dates.startDate, endDate: dates.endDate });
         await fetchAnalytics();
-        toast.dismiss(toastId);
-        toast.success("Success!");
     }
 
     const exportToCSV = () => {
@@ -146,18 +141,15 @@ function QueryTable({ site }) {
     return (
         <>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span className='selected-count'>Showing Page {pageNo} Result : {pageNo * 50} of 500</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span>From</span>
+                <span className='selected-count' style={{ paddingLeft: '15px' }}>Showing Page {pageNo} Result : {pageNo * 50} of 500</span>
+                <div style={{ display: 'flex', alignItems: 'start', gap: '10px' }}>
                     <TextField
                         required
                         margin="dense"
                         name="to"
                         type="date"
-                        variant="standard"
-                        InputLabelProps={{
-                            shrink: true,
-                        }}
+                        label="From"
+                        size='small'
                         value={dates.startDate}
                         onChange={(e) => {
                             setDates({
@@ -165,17 +157,15 @@ function QueryTable({ site }) {
                                 startDate: e.target.value
                             });
                         }}
+                        sx={{ margin: '0' }}
                     />
-                    <span>to</span>
                     <TextField
                         required
                         margin="dense"
                         name="to"
                         type="date"
-                        variant="standard"
-                        InputLabelProps={{
-                            shrink: true,
-                        }}
+                        label="To"
+                        size='small'
                         value={dates.endDate}
                         onChange={(e) => {
                             setDates({
@@ -183,11 +173,12 @@ function QueryTable({ site }) {
                                 endDate: e.target.value
                             });
                         }}
+                        sx={{ margin: '0' }}
                     />
-                    <Button variant="contained" color="primary" onClick={() => { fetchAnalyticsByCustomDate() }} >
-                        Apply<TuneIcon sx={{ marginLeft: 1 }} />
+                    <Button variant="contained" size="small" color="primary" onClick={() => { fetchAnalyticsByCustomDate() }} >
+                        Apply <TuneIcon sx={{ marginLeft: 1 }} />
                     </Button>
-                    <Button variant="contained" color="success" onClick={() => { exportToCSV() }} >
+                    <Button variant="outlined" size='small' color="success" onClick={() => { exportToCSV() }} >
                         Export CSV
                     </Button>
                 </div>
@@ -232,7 +223,16 @@ function QueryTable({ site }) {
                                     <tr key={index}>
                                         <td>{(pageNo - 1) * 50 + (index + 1)}</td>
                                         <td>
-                                            {keyword?.keys?.length > 0 ? keyword.keys[0] : '-'}
+                                            {keyword?.keys?.length > 0 ? (
+                                                <a
+                                                    href={keyword.keys[0]}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="ranking-url"
+                                                >
+                                                    {keyword.keys[0]}
+                                                </a>
+                                            ) : '-'}
                                         </td>
                                         <td>
                                             {keyword?.keys?.length > 0 ? keyword.keys[1] : '-'}
@@ -249,34 +249,36 @@ function QueryTable({ site }) {
                         </tbody>
                     </table>
                 </div>) : (
-                <div className="loading">Loading Console details...</div>
+                <div className="loading" style={{ height: '100%' }}>Search Console data fetching ...</div>
             )}
-            <div className='pagination-container'>
-                <div className="pagination">
-                    <button
-                        className="pagination-button"
-                        onClick={() => {
-                            setLoading(true);
-                            if (pageNo > 1) {
-                                setPageNo(pageNo - 1);
-                            }
-                        }}
-                        disabled={pageNo <= 1}
-                    >
-                        Previous
-                    </button>
-                    <span className="pagination-info">Page {pageNo}</span>
-                    <button
-                        className="pagination-button"
-                        onClick={() => {
-                            setLoading(true);
-                            setPageNo(pageNo + 1);
-                        }}
-                    >
-                        Next
-                    </button>
+            {!loading && (
+                <div className='pagination-container'>
+                    <div className="pagination">
+                        <button
+                            className="pagination-button"
+                            onClick={() => {
+                                setLoading(true);
+                                if (pageNo > 1) {
+                                    setPageNo(pageNo - 1);
+                                }
+                            }}
+                            disabled={pageNo <= 1}
+                        >
+                            Previous
+                        </button>
+                        <span className="pagination-info">Page {pageNo}</span>
+                        <button
+                            className="pagination-button"
+                            onClick={() => {
+                                setLoading(true);
+                                setPageNo(pageNo + 1);
+                            }}
+                        >
+                            Next
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
         </>
     )
 }
