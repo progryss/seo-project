@@ -586,25 +586,31 @@ const linkSheetToProject = async (req, res) => {
     // getting spreadsheet ids from the URL
     function getSpreadsheetIds(sheetUrl) {
       const idMatch = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      const gidMatch = sheetUrl.match(/[?&#]gid=(\d+)/);
 
-      return idMatch ? idMatch[1] : null;
+      return {
+        spreadsheetId: idMatch ? idMatch[1] : null,
+        sheetId: gidMatch ? gidMatch[1] : null
+      };
     }
 
-    let sheetId = getSpreadsheetIds(spreadsheetUrl);
-    const meta = await googlesheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const getIds = getSpreadsheetIds(spreadsheetUrl);
+
+    let spreadsheetId = getIds.spreadsheetId;
+    const meta = await googlesheets.spreadsheets.get({ spreadsheetId: spreadsheetId });
 
     const sheetInfo = {
       spreadsheetUrl: spreadsheetUrl,
       spreadsheetId: meta.data.spreadsheetId,
       spreadsheetTitle: meta.data.properties.title,
-      sheets: meta.data.sheets.map(sheet => ({
+      sheets: meta.data.sheets.filter(sheet => sheet.properties.sheetId === Number(getIds.sheetId)).map(sheet => ({
         tabName: sheet.properties.title,
         sheetId: sheet.properties.sheetId,
         index: sheet.properties.index || 0,
         hidden: sheet.properties.hidden || false,
         rowCount: sheet.properties.gridProperties.rowCount || 0,
         columnCount: sheet.properties.gridProperties.columnCount || 0
-      }))
+      })),
     }
 
     let project = await Project.findByIdAndUpdate(
