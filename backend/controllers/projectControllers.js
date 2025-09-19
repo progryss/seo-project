@@ -60,10 +60,15 @@ const updateProject = async (req, res) => {
       country: country || project.country,
       city: city,
       websiteUrl: websiteUrl || project.websiteUrl,
-      spreadsheet: spreadsheetData,
       keywords: keywordsArray || project.keywords,
       rankings: rankingArray,
     };
+
+    if (spreadsheetUrl && spreadsheetUrl !== project.spreadsheet.spreadsheetUrl) {
+      projectFields.spreadsheet = spreadsheetData;
+    }else if(spreadsheetUrl === ''){
+      projectFields.spreadsheet = {};
+    }
 
     // Update project
     project = await Project.findByIdAndUpdate(
@@ -177,176 +182,6 @@ const savedRankingForProject = async (req, res) => {
   }
 }
 
-const updateRankingForProject = async (req, res) => {
-  try {
-    const project = await Project.findById(req.params.id);
-
-    if (!project) {
-      return res.status(404).json({ msg: 'Project not found' });
-    }
-
-    // Get country code for Google search
-    let gl = 'us'; // Default to US
-    if (project.country) {
-      // Map common country names to their codes
-      const countryMap = {
-        'united states': 'us',
-        'usa': 'us',
-        'united kingdom': 'uk',
-        'uk': 'uk',
-        'india': 'in',
-        'australia': 'au',
-        'canada': 'ca',
-        'germany': 'de',
-        'france': 'fr',
-        'japan': 'jp',
-        'brazil': 'br',
-        'italy': 'it',
-        'spain': 'es',
-        'russia': 'ru',
-        'mexico': 'mx',
-        'south korea': 'kr',
-        'indonesia': 'id',
-        'turkey': 'tr',
-        'netherlands': 'nl',
-        'saudi arabia': 'sa',
-        'switzerland': 'ch',
-        'sweden': 'se',
-        'poland': 'pl',
-        'belgium': 'be',
-        'thailand': 'th',
-        'ireland': 'ie',
-        'austria': 'at',
-        'norway': 'no',
-        'denmark': 'dk',
-        'singapore': 'sg',
-        'hong kong': 'hk',
-        'finland': 'fi',
-        'new zealand': 'nz',
-        'israel': 'il',
-        'greece': 'gr',
-        'portugal': 'pt',
-        'czech republic': 'cz',
-        'romania': 'ro',
-        'hungary': 'hu',
-        'vietnam': 'vn',
-        'malaysia': 'my',
-        'philippines': 'ph',
-        'south africa': 'za',
-        'pakistan': 'pk',
-        'chile': 'cl',
-        'colombia': 'co',
-        'bangladesh': 'bd',
-        'egypt': 'eg',
-        'argentina': 'ar',
-        'morocco': 'ma',
-        'nigeria': 'ng',
-        'kenya': 'ke',
-        'peru': 'pe',
-        'sri lanka': 'lk',
-        'ukraine': 'ua'
-      };
-
-      const countryLower = project.country.toLowerCase();
-      gl = countryMap[countryLower] || gl;
-    }
-
-    // Get location string if city is available
-    let location = '';
-    if (project.city && project.country) {
-      location = `${project.city}, ${project.country}`;
-    }
-
-    // Extract domain from website URL for ranking check
-    let domain = '';
-    try {
-      const url = new URL(project.websiteUrl);
-      domain = url.hostname.replace('www.', '');
-    } catch (err) {
-      console.error('Invalid URL:', project.websiteUrl);
-    }
-
-    // Prepare to fetch rankings for each keyword
-    const keywordPromises = project.keywords.map(async (keyword) => {
-      const rankingData = rankings.find(r => r.keyword === keyword) || {};
-      try {
-        const data = JSON.stringify({
-          "q": keyword,
-          "location": location || undefined,
-          "gl": gl,
-          "num": 100
-        });
-
-        const config = {
-          method: 'post',
-          maxBodyLength: Infinity,
-          url: 'https://google.serper.dev/search',
-          headers: {
-            'X-API-KEY': process.env.SERPER_API_KEY,
-            'Content-Type': 'application/json'
-          },
-          data: data
-        };
-
-        const response = await axios.request(config);
-        const searchResults = response.data.organic || [];
-
-        // Find if the website appears in the search results
-        let ranking = null;
-        let rankingUrl = null;
-
-        for (let i = 0; i < searchResults.length; i++) {
-          const result = searchResults[i];
-          if (result.link && result.link.includes(domain)) {
-            ranking = i + 1;
-            rankingUrl = result.link;
-            break;
-          }
-        }
-
-        return {
-          keyword,
-          ranking,
-          previousRanking: rankingData.ranking || null,
-          rankingUrl,
-          searchEngine: `google.${gl}`
-        };
-      } catch (err) {
-        console.error(`Error fetching ranking for keyword "${keyword}":`, err.message);
-        return {
-          keyword,
-          ranking: null,
-          rankingUrl: null,
-          error: 'Failed to fetch ranking'
-        };
-      }
-    });
-
-    // Wait for all keyword rankings to be fetched
-    const rankings = await Promise.all(keywordPromises);
-
-    // Update project with new rankings
-    project.rankings = rankings.map(ranking => ({
-      ...ranking,
-      checkedAt: new Date()
-    }));
-
-    // Save the project with the updated rankings
-    await project.save();
-
-    res.json(rankings);
-  } catch (err) {
-    console.error(err.message);
-
-    // Check if error is due to invalid ObjectId format
-    if (err.kind === 'ObjectId') {
-      return res.status(404).json({ msg: 'Project not found' });
-    }
-
-    res.status(500).send('Server error');
-  }
-}
-
 const checkRankingForSelectedKeywords = async (req, res) => {
   try {
     const project = await Project.findById(req.params.id);
@@ -444,79 +279,85 @@ const checkRankingForSelectedKeywords = async (req, res) => {
     }
 
     // 3. Modified function for header-aware rate limit
-    async function fetchRankingWithRateLimit(keyword, project, domain, location, gl) {
-      const rankingData = project.rankings.find(r => r.keyword === keyword) || {};
+   async function fetchRankingWithRateLimit(keyword, project, domain, location, gl) {
+  const rankingData = project.rankings.find(r => r.keyword === keyword) || {};
+  let ranking = null;
+  let rankingUrl = null;
 
-      try {
-        const data = {
-          q: keyword,
-          location: location || undefined,
-          gl: gl,
-          num: 100
-        };
+  try {
+    const maxPages = 10; // adjust as needed
+    const resultsPerPage = 10; // default per Serper
+    let currentPage = 0;
 
-        const config = {
-          method: 'post',
-          maxBodyLength: Infinity,
-          url: 'https://google.serper.dev/search',
-          data: data,
-          headers: {
-            'X-API-KEY': process.env.SERPER_API_KEY,
-            'Content-Type': 'application/json'
-          }
-        };
+    while (currentPage < maxPages && ranking === null) {
+      const data = {
+        q: keyword,
+        location: location || undefined,
+        gl: gl,
+        num: resultsPerPage,
+        page: currentPage + 1 // <-- NEW: page parameter
+      };
 
-        const response = await axios.request(config);
-        const searchResults = response.data.organic || [];
+      const config = {
+        method: 'post',
+        url: 'https://google.serper.dev/search',
+        headers: {
+          'X-API-KEY': process.env.SERPER_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        data
+      };
 
-        // --- Handle Rate Limit Headers ---
-        const remaining = parseInt(response.headers['x-ratelimit-remaining']);
-        const reset = parseInt(response.headers['x-ratelimit-reset']);
-        if (remaining === 0 && reset) {
-          const now = Math.floor(Date.now() / 1000);
-          const wait = (reset - now) * 1000;
-          if (wait > 0) {
-            console.log(`[${keyword}] Rate limit hit. Pausing for ${Math.ceil(wait / 1000)}s`);
-            // Pause Bottleneck, resume after wait
-            await limiter.stop({ dropWaitingJobs: false });
-            setTimeout(() => limiter.start(), wait);
-            await sleep(wait);
-          }
+      const response = await axios.request(config);
+      const searchResults = response.data.organic || [];
+
+      // Handle rate-limit headers if needed
+      const remaining = parseInt(response.headers['x-ratelimit-remaining']);
+      const reset = parseInt(response.headers['x-ratelimit-reset']);
+      if (remaining === 0 && reset) {
+        const now = Math.floor(Date.now() / 1000);
+        const wait = (reset - now) * 1000;
+        if (wait > 0) {
+          console.log(`[${keyword}] Rate limit hit. Pausing for ${Math.ceil(wait / 1000)}s`);
+          await sleep(wait);
         }
-
-        // Find if the website appears in the search results
-        let ranking = null;
-        let rankingUrl = null;
-        for (let i = 0; i < searchResults.length; i++) {
-          const result = searchResults[i];
-          if (result.link && result.link.includes(domain)) {
-            ranking = i + 1;
-            rankingUrl = result.link;
-            break;
-          }
-        }
-
-        return {
-          keyword,
-          ranking,
-          previousRanking: rankingData.ranking,
-          rankingUrl,
-          searchEngine: `google.${gl}`,
-          checkedAt: new Date()
-        };
-      } catch (err) {
-        console.error(`Error fetching ranking for keyword "${keyword}":`, err.message);
-        return {
-          keyword,
-          ranking: null,
-          previousRanking: rankingData.ranking,
-          rankingUrl: null,
-          searchEngine: `google.${gl}`,
-          error: 'Failed to fetch ranking',
-          checkedAt: new Date()
-        };
       }
+
+      // Look for the domain in this page's results
+      for (let i = 0; i < searchResults.length; i++) {
+        const result = searchResults[i];
+        if (result.link && result.link.includes(domain)) {
+          ranking = currentPage * resultsPerPage + (i + 1);
+          rankingUrl = result.link;
+          break;
+        }
+      }
+
+      currentPage++;
     }
+
+    return {
+      keyword,
+      ranking,
+      previousRanking: rankingData.ranking,
+      rankingUrl,
+      searchEngine: `google.${gl}`,
+      checkedAt: new Date()
+    };
+  } catch (err) {
+    console.error(`Error fetching ranking for keyword "${keyword}":`, err.message);
+    return {
+      keyword,
+      ranking: null,
+      previousRanking: rankingData.ranking,
+      rankingUrl: null,
+      searchEngine: `google.${gl}`,
+      error: 'Failed to fetch ranking',
+      checkedAt: new Date()
+    };
+  }
+}
+
 
     // 4. Prepare to fetch rankings for selected keywords only, using Bottleneck
     const keywordPromises = keywords.map(keyword =>
@@ -646,4 +487,4 @@ const updateGoogleSheet = async (req, res) => {
   }
 }
 
-module.exports = { updateGoogleSheet, updateProject, linkSheetToProject, getAllProjects, getSingleProject, deleteSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords };
+module.exports = { updateGoogleSheet, updateProject, linkSheetToProject, getAllProjects, getSingleProject, deleteSingleProject, createProject, savedRankingForProject, checkRankingForSelectedKeywords };
