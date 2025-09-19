@@ -4,7 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 const cookieParser = require('cookie-parser');
 
-const { updateGoogleSheet, linkSheetToProject ,updateProject, getAllProjects, deleteSingleProject, getSingleProject, createProject, savedRankingForProject, updateRankingForProject, checkRankingForSelectedKeywords } = require('./controllers/projectControllers.js');
+const { updateGoogleSheet, linkSheetToProject ,updateProject, getAllProjects, deleteSingleProject, getSingleProject, createProject, savedRankingForProject, checkRankingForSelectedKeywords } = require('./controllers/projectControllers.js');
 const auth = require('./middlewares/auth.js');
 const initAdminUser = require('./middlewares/createAdminUser.js');
 const { login } = require('./controllers/userControllers.js');
@@ -54,9 +54,6 @@ app.post('/api/projects', auth, createProject);
 
 // Get saved rankings for a project
 app.get('/api/projects/:id/saved-rankings', auth, savedRankingForProject);
-
-// Check and update keyword rankings for a project
-app.get('/api/projects/:id/rankings', auth, updateRankingForProject);
 
 // Check rankings for selected keywords only
 app.post('/api/projects/:id/check-rankings', auth, checkRankingForSelectedKeywords);
