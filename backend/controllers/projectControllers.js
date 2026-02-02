@@ -66,7 +66,7 @@ const updateProject = async (req, res) => {
 
     if (spreadsheetUrl && spreadsheetUrl !== project.spreadsheet.spreadsheetUrl) {
       projectFields.spreadsheet = spreadsheetData;
-    }else if(spreadsheetUrl === ''){
+    } else if (spreadsheetUrl === '') {
       projectFields.spreadsheet = {};
     }
 
@@ -197,210 +197,247 @@ const checkRankingForSelectedKeywords = async (req, res) => {
       return res.status(400).json({ msg: 'Please select at least one keyword' });
     }
 
-    // Get country code for Google search
-    let gl = 'us'; // Default to US
-    if (project.country) {
-      // Map common country names to their codes
-      const countryMap = {
-        'united states': 'us',
-        'usa': 'us',
-        'united kingdom': 'uk',
-        'uk': 'uk',
-        'india': 'in',
-        'australia': 'au',
-        'canada': 'ca',
-        'germany': 'de',
-        'france': 'fr',
-        'japan': 'jp',
-        'brazil': 'br',
-        'italy': 'it',
-        'spain': 'es',
-        'russia': 'ru',
-        'mexico': 'mx',
-        'south korea': 'kr',
-        'indonesia': 'id',
-        'turkey': 'tr',
-        'netherlands': 'nl',
-        'saudi arabia': 'sa',
-        'switzerland': 'ch',
-        'sweden': 'se',
-        'poland': 'pl',
-        'belgium': 'be',
-        'thailand': 'th',
-        'ireland': 'ie',
-        'austria': 'at',
-        'norway': 'no',
-        'denmark': 'dk',
-        'singapore': 'sg',
-        'hong kong': 'hk',
-        'finland': 'fi',
-        'new zealand': 'nz',
-        'israel': 'il',
-        'greece': 'gr',
-        'portugal': 'pt',
-        'czech republic': 'cz',
-        'romania': 'ro',
-        'hungary': 'hu',
-        'vietnam': 'vn',
-        'malaysia': 'my',
-        'philippines': 'ph',
-        'south africa': 'za',
-        'pakistan': 'pk',
-        'chile': 'cl',
-        'colombia': 'co',
-        'bangladesh': 'bd',
-        'egypt': 'eg',
-        'argentina': 'ar',
-        'morocco': 'ma',
-        'nigeria': 'ng',
-        'kenya': 'ke',
-        'peru': 'pe',
-        'sri lanka': 'lk',
-        'ukraine': 'ua'
-      };
-
-      const countryLower = project.country.toLowerCase();
-      gl = countryMap[countryLower] || gl;
+    // ✅ PREVENT DOUBLE RUN
+    if (project.rankCheckStatus === 'running') {
+      return res.status(200).json({
+        msg: 'Ranking check already running',
+        rankCheckStatus: 'running'
+      });
     }
 
-    // Get location string if city is available
-    let location = '';
-    if (project.city && project.country) {
-      location = `${project.city}, ${project.country}`;
-    }
-
-    // Extract domain from website URL for ranking check
-    let domain = '';
-    try {
-      const url = new URL(project.websiteUrl);
-      domain = url.hostname.replace('www.', '');
-    } catch (err) {
-      console.error('Invalid URL:', project.websiteUrl);
-    }
-
-    // 3. Modified function for header-aware rate limit
-   async function fetchRankingWithRateLimit(keyword, project, domain, location, gl) {
-  const rankingData = project.rankings.find(r => r.keyword === keyword) || {};
-  let ranking = null;
-  let rankingUrl = null;
-
-  try {
-    const maxPages = 10; // adjust as needed
-    const resultsPerPage = 10; // default per Serper
-    let currentPage = 0;
-
-    while (currentPage < maxPages && ranking === null) {
-      const data = {
-        q: keyword,
-        location: location || undefined,
-        gl: gl,
-        num: resultsPerPage,
-        page: currentPage + 1 // <-- NEW: page parameter
-      };
-
-      const config = {
-        method: 'post',
-        url: 'https://google.serper.dev/search',
-        headers: {
-          'X-API-KEY': process.env.SERPER_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        data
-      };
-
-      const response = await axios.request(config);
-      const searchResults = response.data.organic || [];
-
-      // Handle rate-limit headers if needed
-      const remaining = parseInt(response.headers['x-ratelimit-remaining']);
-      const reset = parseInt(response.headers['x-ratelimit-reset']);
-      if (remaining === 0 && reset) {
-        const now = Math.floor(Date.now() / 1000);
-        const wait = (reset - now) * 1000;
-        if (wait > 0) {
-          console.log(`[${keyword}] Rate limit hit. Pausing for ${Math.ceil(wait / 1000)}s`);
-          await sleep(wait);
-        }
-      }
-
-      // Look for the domain in this page's results
-      for (let i = 0; i < searchResults.length; i++) {
-        const result = searchResults[i];
-        if (result.link && result.link.includes(domain)) {
-          ranking = currentPage * resultsPerPage + (i + 1);
-          rankingUrl = result.link;
-          break;
-        }
-      }
-
-      currentPage++;
-    }
-
-    return {
-      keyword,
-      ranking,
-      previousRanking: rankingData.ranking,
-      rankingUrl,
-      searchEngine: `google.${gl}`,
-      checkedAt: new Date()
-    };
-  } catch (err) {
-    console.error(`Error fetching ranking for keyword "${keyword}":`, err.message);
-    return {
-      keyword,
-      ranking: null,
-      previousRanking: rankingData.ranking,
-      rankingUrl: null,
-      searchEngine: `google.${gl}`,
-      error: 'Failed to fetch ranking',
-      checkedAt: new Date()
-    };
-  }
-}
-
-
-    // 4. Prepare to fetch rankings for selected keywords only, using Bottleneck
-    const keywordPromises = keywords.map(keyword =>
-      limiter.schedule(() => fetchRankingWithRateLimit(keyword, project, domain, location, gl))
-    );
-
-    // 5. Wait for all keyword rankings to be fetched
-    const newRankings = await Promise.all(keywordPromises);
-
-    // Get existing rankings that weren't selected for update
-    const existingRankings = project.rankings || [];
-    const existingKeywords = existingRankings.map(r => r.keyword);
-
-    // Create a map of new rankings for quick lookup
-    const newRankingsMap = {};
-    newRankings.forEach(ranking => {
-      newRankingsMap[ranking.keyword] = ranking;
-    });
-
-    // Merge existing and new rankings
-    const mergedRankings = existingRankings.map(ranking => {
-      // If this keyword was updated, use the new ranking
-      if (newRankingsMap[ranking.keyword]) {
-        return newRankingsMap[ranking.keyword];
-      }
-      // Otherwise keep the existing ranking
-      return ranking;
-    });
-
-    // Add any new keywords that weren't in the existing rankings
-    newRankings.forEach(ranking => {
-      if (!existingKeywords.includes(ranking.keyword)) {
-        mergedRankings.push(ranking);
-      }
-    });
-
-    // Update project with merged rankings
-    project.rankings = mergedRankings;
-
-    // Save the project with the updated rankings
+    // ✅ MARK JOB AS RUNNING
+    project.rankCheckStatus = 'running';
+    project.rankCheckStartedAt = new Date();
+    project.rankCheckUpdatedAt = new Date();
+    project.rankCheckError = null;
     await project.save();
 
-    res.status(200).send(project.rankings);
+    // ✅ RESPOND IMMEDIATELY (NO TIMEOUT)
+    res.status(202).json({
+      msg: 'Ranking check started',
+      rankCheckStatus: 'running'
+    });
+
+    // 🚀 CONTINUE WORK IN BACKGROUND
+    setImmediate(async () => {
+      try {
+
+        // Get country code for Google search
+        let gl = 'us'; // Default to US
+        if (project.country) {
+          // Map common country names to their codes
+          const countryMap = {
+            'united states': 'us',
+            'usa': 'us',
+            'united kingdom': 'uk',
+            'uk': 'uk',
+            'india': 'in',
+            'australia': 'au',
+            'canada': 'ca',
+            'germany': 'de',
+            'france': 'fr',
+            'japan': 'jp',
+            'brazil': 'br',
+            'italy': 'it',
+            'spain': 'es',
+            'russia': 'ru',
+            'mexico': 'mx',
+            'south korea': 'kr',
+            'indonesia': 'id',
+            'turkey': 'tr',
+            'netherlands': 'nl',
+            'saudi arabia': 'sa',
+            'switzerland': 'ch',
+            'sweden': 'se',
+            'poland': 'pl',
+            'belgium': 'be',
+            'thailand': 'th',
+            'ireland': 'ie',
+            'austria': 'at',
+            'norway': 'no',
+            'denmark': 'dk',
+            'singapore': 'sg',
+            'hong kong': 'hk',
+            'finland': 'fi',
+            'new zealand': 'nz',
+            'israel': 'il',
+            'greece': 'gr',
+            'portugal': 'pt',
+            'czech republic': 'cz',
+            'romania': 'ro',
+            'hungary': 'hu',
+            'vietnam': 'vn',
+            'malaysia': 'my',
+            'philippines': 'ph',
+            'south africa': 'za',
+            'pakistan': 'pk',
+            'chile': 'cl',
+            'colombia': 'co',
+            'bangladesh': 'bd',
+            'egypt': 'eg',
+            'argentina': 'ar',
+            'morocco': 'ma',
+            'nigeria': 'ng',
+            'kenya': 'ke',
+            'peru': 'pe',
+            'sri lanka': 'lk',
+            'ukraine': 'ua'
+          };
+
+          const countryLower = project.country.toLowerCase();
+          gl = countryMap[countryLower] || gl;
+        }
+
+        // Get location string if city is available
+        let location = '';
+        if (project.city && project.country) {
+          location = `${project.city}, ${project.country}`;
+        }
+
+        // Extract domain from website URL for ranking check
+        let domain = '';
+        try {
+          const url = new URL(project.websiteUrl);
+          domain = url.hostname.replace('www.', '');
+        } catch (err) {
+          console.error('Invalid URL:', project.websiteUrl);
+        }
+
+        // 3. Modified function for header-aware rate limit
+        async function fetchRankingWithRateLimit(keyword, project, domain, location, gl) {
+          const rankingData = project.rankings.find(r => r.keyword === keyword) || {};
+          let ranking = null;
+          let rankingUrl = null;
+
+          try {
+            const maxPages = 10; // adjust as needed
+            const resultsPerPage = 10; // default per Serper
+            let currentPage = 0;
+
+            while (currentPage < maxPages && ranking === null) {
+              const data = {
+                q: keyword,
+                location: location || undefined,
+                gl: gl,
+                num: resultsPerPage,
+                page: currentPage + 1 // <-- NEW: page parameter
+              };
+
+              const config = {
+                method: 'post',
+                url: 'https://google.serper.dev/search',
+                headers: {
+                  'X-API-KEY': process.env.SERPER_API_KEY,
+                  'Content-Type': 'application/json'
+                },
+                data
+              };
+
+              const response = await axios.request(config);
+              const searchResults = response.data.organic || [];
+
+              // Handle rate-limit headers if needed
+              const remaining = parseInt(response.headers['x-ratelimit-remaining']);
+              const reset = parseInt(response.headers['x-ratelimit-reset']);
+              if (remaining === 0 && reset) {
+                const now = Math.floor(Date.now() / 1000);
+                const wait = (reset - now) * 1000;
+                if (wait > 0) {
+                  console.log(`[${keyword}] Rate limit hit. Pausing for ${Math.ceil(wait / 1000)}s`);
+                  await sleep(wait);
+                }
+              }
+
+              // Look for the domain in this page's results
+              for (let i = 0; i < searchResults.length; i++) {
+                const result = searchResults[i];
+                if (result.link && result.link.includes(domain)) {
+                  ranking = currentPage * resultsPerPage + (i + 1);
+                  rankingUrl = result.link;
+                  break;
+                }
+              }
+
+              currentPage++;
+            }
+
+            return {
+              keyword,
+              ranking,
+              previousRanking: rankingData.ranking,
+              rankingUrl,
+              searchEngine: `google.${gl}`,
+              checkedAt: new Date()
+            };
+          } catch (err) {
+            console.error(`Error fetching ranking for keyword "${keyword}":`, err.message);
+            return {
+              keyword,
+              ranking: null,
+              previousRanking: rankingData.ranking,
+              rankingUrl: null,
+              searchEngine: `google.${gl}`,
+              error: 'Failed to fetch ranking',
+              checkedAt: new Date()
+            };
+          }
+        }
+
+
+        // 4. Prepare to fetch rankings for selected keywords only, using Bottleneck
+        const keywordPromises = keywords.map(keyword =>
+          limiter.schedule(() => fetchRankingWithRateLimit(keyword, project, domain, location, gl))
+        );
+
+        // 5. Wait for all keyword rankings to be fetched
+        const newRankings = await Promise.all(keywordPromises);
+
+        // Get existing rankings that weren't selected for update
+        const existingRankings = project.rankings || [];
+        const existingKeywords = existingRankings.map(r => r.keyword);
+
+        // Create a map of new rankings for quick lookup
+        const newRankingsMap = {};
+        newRankings.forEach(ranking => {
+          newRankingsMap[ranking.keyword] = ranking;
+        });
+
+        // Merge existing and new rankings
+        const mergedRankings = existingRankings.map(ranking => {
+          // If this keyword was updated, use the new ranking
+          if (newRankingsMap[ranking.keyword]) {
+            return newRankingsMap[ranking.keyword];
+          }
+          // Otherwise keep the existing ranking
+          return ranking;
+        });
+
+        // Add any new keywords that weren't in the existing rankings
+        newRankings.forEach(ranking => {
+          if (!existingKeywords.includes(ranking.keyword)) {
+            mergedRankings.push(ranking);
+          }
+        });
+
+        // Update project with merged rankings
+        project.rankings = mergedRankings;
+
+        // ✅ MARK COMPLETED
+        project.rankCheckStatus = 'completed';
+        project.rankCheckUpdatedAt = new Date();
+
+        await project.save();
+
+      } catch (bgErr) {
+        console.error('Ranking job failed:', bgErr);
+
+        project.rankCheckStatus = 'failed';
+        project.rankCheckUpdatedAt = new Date();
+        project.rankCheckError = bgErr.message || 'Ranking job failed';
+        await project.save();
+      }
+    });
+
   } catch (err) {
     console.error(err.message);
 
