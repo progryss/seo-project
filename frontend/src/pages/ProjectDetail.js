@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Cookies from "js-cookie";
@@ -12,19 +12,75 @@ function ProjectDetail() {
 
   const [project, setProject] = useState(null);
   const [tabberState, setTabberState] = useState("keywords");
-  const [sortOrder, setSortOrder] = useState(false);
+  const [sortOrder, setSortOrder] = useState("asc"); // asc | desc
   const [rankings, setRankings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [rankingsLoading, setRankingsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [rankingsError, setRankingsError] = useState(null);
   const [selectedKeywords, setSelectedKeywords] = useState([]);
-  const [selectAll, setSelectAll] = useState(false);
   const rankPollingRef = useRef(null);
+  const [progressInfo, setProgressInfo] = useState("");
 
   const [isLinkSheetLoading, setIsLinkSheetLoading] = useState(false);
   const [isUpdateSheetRankingLoading, setUpdateSheetRankingLoading] =
     useState(false);
+
+  const isAllSelected =
+    project?.keywords?.length > 0 &&
+    selectedKeywords.length === project.keywords.length;
+
+  /* ⬇️ ADD BELOW THIS */
+  const rankingLookup = useMemo(() => {
+    const map = {};
+    for (const r of rankings) {
+      map[r.keyword] = r;
+    }
+    return map;
+  }, [rankings]);
+
+  const applyKeywordRankingSort = ({
+    keywords = [],
+    rankings = [],
+    order = "asc", // "asc" | "desc"
+  }) => {
+    // 1️⃣ Create ranking map
+    const rankingMap = rankings.reduce((acc, { keyword, ranking }) => {
+      acc[keyword] = ranking;
+      return acc;
+    }, {});
+
+    // 2️⃣ Sort keywords safely
+    const sortedKeywords = [...keywords].sort((a, b) => {
+      const rankA =
+        rankingMap[a] !== undefined
+          ? rankingMap[a] === null
+            ? Infinity
+            : rankingMap[a]
+          : Infinity;
+
+      const rankB =
+        rankingMap[b] !== undefined
+          ? rankingMap[b] === null
+            ? Infinity
+            : rankingMap[b]
+          : Infinity;
+
+      return order === "asc" ? rankA - rankB : rankB - rankA;
+    });
+
+    // 3️⃣ Sort rankings safely (null last)
+    const sortedRankings = [...rankings].sort((a, b) => {
+      if (a.ranking === null) return 1;
+      if (b.ranking === null) return -1;
+      return order === "asc" ? a.ranking - b.ranking : b.ranking - a.ranking;
+    });
+
+    return {
+      keywords: sortedKeywords,
+      rankings: sortedRankings,
+    };
+  };
 
   const startRankPolling = () => {
     // ⛔ prevent duplicate polling
@@ -33,35 +89,62 @@ function ProjectDetail() {
     rankPollingRef.current = setInterval(async () => {
       try {
         const res = await axios.get(
-          `${process.env.REACT_APP_SERVER_URL}/api/projects/${id}`,
+          `${process.env.REACT_APP_SERVER_URL}/api/projects/${id}/ranking-status`,
           { withCredentials: true },
         );
 
-        const projectData = res.data;
-        setProject(projectData);
+        const {
+          rankCheckStatus,
+          rankCheckDone,
+          rankCheckTotal,
+          rankCheckError,
+        } = res.data;
+        setProgressInfo(`${rankCheckDone} / ${rankCheckTotal}`);
 
-        if (projectData.rankCheckStatus === "completed") {
-          setRankings(projectData.rankings || []);
-          setRankingsLoading(false);
-          clearInterval(rankPollingRef.current);
-          rankPollingRef.current = null;
-        }
+        switch (rankCheckStatus) {
+          case "completed":
+            setTimeout(() => {
+              setRankingsLoading(false);
+              stopRankPolling();
+              fetchProjectDetails();
+            }, 500);
+            break;
 
-        if (projectData.rankCheckStatus === "failed") {
-          setRankingsError(
-            projectData.rankCheckError || "Ranking check failed",
-          );
-          setRankingsLoading(false);
-          clearInterval(rankPollingRef.current);
-          rankPollingRef.current = null;
+          case "failed":
+            setRankingsError(rankCheckError || "Ranking check failed");
+            setRankingsLoading(false);
+            stopRankPolling();
+            break;
+
+          case "running":
+            // do nothing, polling continues
+            break;
+
+          default:
+            setRankingsError("Unknown ranking status");
+            setRankingsLoading(false);
+            stopRankPolling();
         }
       } catch (err) {
         console.error("Polling error:", err);
+        setRankingsError(
+          err.response?.data?.msg ||
+            "Unable to fetch ranking status. Please try again.",
+        );
+        setRankingsLoading(false);
+        stopRankPolling();
       }
     }, 5000); // every 5 seconds
   };
 
-  const fetchProjectAndRankings = async () => {
+  const stopRankPolling = () => {
+    if (rankPollingRef.current) {
+      clearInterval(rankPollingRef.current);
+      rankPollingRef.current = null;
+    }
+  };
+
+  const fetchProjectDetails = async () => {
     try {
       const token = Cookies.get("userCookie");
       if (!token) {
@@ -79,51 +162,22 @@ function ProjectDetail() {
         },
       );
 
-      const sortedRanking = projectRes.data.rankings.sort((a, b) => {
-        if (a.ranking === null) return 1;
-        if (b.ranking === null) return -1;
-        return b.ranking - a.ranking;
-      });
-
-      const rankingMap = sortedRanking.reduce((acc, { keyword, ranking }) => {
-        acc[keyword] = ranking; // Store keyword -> ranking pair
-        return acc;
-      }, {});
-
-      // console.log(rankingMap)
-
-      const sortedKeywords = projectRes.data.keywords.sort((a, b) => {
-        const rankA =
-          rankingMap[a] !== undefined
-            ? rankingMap[a] === null
-              ? Infinity
-              : rankingMap[a]
-            : Infinity;
-        const rankB =
-          rankingMap[b] !== undefined
-            ? rankingMap[b] === null
-              ? Infinity
-              : rankingMap[b]
-            : Infinity;
-
-        // Ascending order
-        return rankA - rankB;
-      });
-
-      const sortedData = {
-        ...projectRes.data,
-        keywords: sortedKeywords,
-        rankings: sortedRanking,
-      };
-      // console.log(sortedData)
-      // console.log(rankingMap)
-
-      setProject(sortedData);
-
-      if (sortedData.rankCheckStatus === 'running') {
+      if (projectRes.data.rankCheckStatus === "running") {
         setRankingsLoading(true);
         startRankPolling();
       }
+
+      const sorted = applyKeywordRankingSort({
+        keywords: projectRes.data.keywords,
+        rankings: projectRes.data.rankings,
+        order: "asc", // ✅ initial load ascending
+      });
+
+      setProject({
+        ...projectRes.data,
+        keywords: sorted.keywords,
+        rankings: sorted.rankings,
+      });
 
       // Fetch saved rankings if they exist
       const rankingsRes = await axios.get(
@@ -150,32 +204,26 @@ function ProjectDetail() {
 
   // Handle select all checkbox
   const handleSelectAll = () => {
-    if (selectAll) {
+    if (isAllSelected) {
       setSelectedKeywords([]);
     } else {
       setSelectedKeywords([...project.keywords]);
     }
-    setSelectAll(!selectAll);
   };
 
   // Handle individual keyword selection
   const handleKeywordSelect = (keyword) => {
-    if (selectedKeywords.includes(keyword)) {
-      setSelectedKeywords(selectedKeywords.filter((k) => k !== keyword));
-      setSelectAll(false);
-    } else {
-      const newSelected = [...selectedKeywords, keyword];
-      setSelectedKeywords(newSelected);
-      if (newSelected.length === project.keywords.length) {
-        setSelectAll(true);
-      }
-    }
+    setSelectedKeywords((prev) =>
+      prev.includes(keyword)
+        ? prev.filter((k) => k !== keyword)
+        : [...prev, keyword],
+    );
   };
 
   // Fetch rankings only for selected keywords
-  const fetchKeywordRankings = async () => {
-    if (selectedKeywords.length === 0) {
-      setRankingsError("Please select at least one keyword to check rankings");
+  const checkKeywordRankings = async () => {
+    if (!selectedKeywords.length) {
+      setRankingsError("Please select at least one keyword");
       return;
     }
 
@@ -183,35 +231,21 @@ function ProjectDetail() {
     setRankingsError(null);
 
     try {
-      const token = Cookies.get("userCookie");
-      if (!token) {
-        navigate("/admin");
-        return;
-      }
-
-      // Send selected keywords to backend
       const res = await axios.post(
         `${process.env.REACT_APP_SERVER_URL}/api/projects/${id}/check-rankings`,
         { keywords: selectedKeywords },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          withCredentials: true,
-        },
+        { withCredentials: true },
       );
 
-      // ✅ job started → start polling
+      setProgressInfo(`0 / ${res.data.total}`);
       startRankPolling();
-
-      setSelectAll(false);
       setSelectedKeywords([]);
-
+      
     } catch (err) {
+      setRankingsLoading(false);
       setRankingsError(
         err.response?.data?.msg || "Error fetching keyword rankings",
       );
-      setRankingsLoading(false);
       console.error(err);
     }
   };
@@ -233,7 +267,7 @@ function ProjectDetail() {
 
     // Create CSV data rows
     const csvData = project.keywords.map((keyword) => {
-      const rankingData = rankings.find((r) => r.keyword === keyword) || {};
+      const rankingData = rankingLookup[keyword] || {};
 
       return [
         keyword,
@@ -300,62 +334,45 @@ function ProjectDetail() {
     if (!confirmDelete) {
       return;
     }
-    // Send selected keywords to backend
-    await axios.delete(
-      `${process.env.REACT_APP_SERVER_URL}/api/projects/${id}`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        withCredentials: true,
-      },
-    );
-    // Redirect to projects page after 2 seconds
-    setTimeout(() => {
-      navigate("/projects");
-    }, 0);
 
-    toast.success("Project deleted successfully!");
+    try {
+      await axios.delete(
+        `${process.env.REACT_APP_SERVER_URL}/api/projects/${id}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          withCredentials: true,
+        },
+      );
+      // Redirect to projects page after 2 seconds
+      setTimeout(() => {
+        navigate("/projects");
+      }, 0);
+
+      toast.success("Project deleted successfully!");
+    } catch (error) {
+      console.error("Delete project failed:", error);
+      toast.error("Failed to delete project. Please try again.");
+    }
   };
 
   // shorting
   const handleSort = () => {
-    setSortOrder(!sortOrder);
-    console.log(project);
-    const rankingArr = project.rankings.sort((a, b) => {
-      if (a.ranking === null) return 1;
-      if (b.ranking === null) return -1;
-      return b.ranking - a.ranking;
+    const nextOrder = sortOrder === "asc" ? "desc" : "asc";
+
+    const sorted = applyKeywordRankingSort({
+      keywords: project.keywords,
+      rankings: project.rankings,
+      order: nextOrder,
     });
 
-    const rankingMap = rankingArr.reduce((acc, { keyword, ranking }) => {
-      acc[keyword] = ranking; // Store keyword -> ranking pair
-      return acc;
-    }, {});
-
-    const sortedKeywords = project.keywords.sort((a, b) => {
-      const rankA =
-        rankingMap[a] !== undefined
-          ? rankingMap[a] === null
-            ? Infinity
-            : rankingMap[a]
-          : Infinity;
-      const rankB =
-        rankingMap[b] !== undefined
-          ? rankingMap[b] === null
-            ? Infinity
-            : rankingMap[b]
-          : Infinity;
-
-      // Ascending order
-      return sortOrder ? rankA - rankB : rankB - rankA;
-    });
-    console.log(rankingMap);
-    console.log(sortedKeywords);
+    setSortOrder(nextOrder);
 
     setProject({
       ...project,
-      keywords: sortedKeywords,
+      keywords: sorted.keywords,
+      rankings: sorted.rankings,
     });
   };
 
@@ -417,23 +434,19 @@ function ProjectDetail() {
   };
 
   useEffect(() => {
-    fetchProjectAndRankings();
+    fetchProjectDetails();
   }, [id, navigate]);
 
   // Set up selected keywords when project data is loaded
   useEffect(() => {
     if (project && project.keywords) {
       setSelectedKeywords([]);
-      setSelectAll(false);
     }
   }, [project]);
 
   useEffect(() => {
     return () => {
-      if (rankPollingRef.current) {
-        clearInterval(rankPollingRef.current);
-        rankPollingRef.current = null;
-      }
+      stopRankPolling();
     };
   }, []);
 
@@ -747,7 +760,7 @@ function ProjectDetail() {
                       size="small"
                       color="primary"
                       onClick={() => {
-                        fetchKeywordRankings();
+                        checkKeywordRankings();
                       }}
                       disabled={
                         rankingsLoading || selectedKeywords.length === 0
@@ -775,7 +788,9 @@ function ProjectDetail() {
           )}
 
           {rankingsLoading ? (
-            <div className="loading">Fetching keyword rankings...</div>
+            <div className="loading">
+              Fetching keyword rankings... {progressInfo}
+            </div>
           ) : (
             <>
               {project.keywords.length > 0 && tabberState === "keywords" ? (
@@ -787,16 +802,13 @@ function ProjectDetail() {
                         <th>
                           <input
                             type="checkbox"
-                            checked={selectAll}
+                            checked={isAllSelected}
                             onChange={handleSelectAll}
                             disabled={rankingsLoading}
                           />
                           Keyword
                         </th>
-                        <th
-                          onClick={() => handleSort(true)}
-                          style={{ cursor: "pointer" }}
-                        >
+                        <th onClick={handleSort} style={{ cursor: "pointer" }}>
                           Ranking
                           <span
                             style={{
@@ -806,11 +818,12 @@ function ProjectDetail() {
                             }}
                           >
                             <svg
-                              style={
-                                sortOrder
-                                  ? { transform: "rotate(180deg)" }
-                                  : { transform: "rotate(0)" }
-                              }
+                              style={{
+                                transform:
+                                  sortOrder === "desc"
+                                    ? "rotate(180deg)"
+                                    : "rotate(0)",
+                              }}
                               xmlns="http://www.w3.org/2000/svg"
                               fill="#000000"
                               width="12px"
@@ -837,8 +850,7 @@ function ProjectDetail() {
                     </thead>
                     <tbody>
                       {project.keywords.map((keyword, index) => {
-                        const rankingData =
-                          rankings.find((r) => r.keyword === keyword) || {};
+                        const rankingData = rankingLookup[keyword] || {};
                         const rankColorStatus =
                           rankingData.ranking === rankingData.previousRanking
                             ? { color: "#555555" }
@@ -856,10 +868,7 @@ function ProjectDetail() {
                             <td>
                               <input
                                 type="checkbox"
-                                checked={
-                                  selectedKeywords.includes(keyword) ||
-                                  selectAll
-                                }
+                                checked={selectedKeywords.includes(keyword)}
                                 onChange={() => handleKeywordSelect(keyword)}
                                 disabled={rankingsLoading}
                               />

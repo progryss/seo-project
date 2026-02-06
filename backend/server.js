@@ -4,7 +4,8 @@ const cors = require('cors');
 require('dotenv').config();
 const cookieParser = require('cookie-parser');
 
-const { updateGoogleSheet, linkSheetToProject ,updateProject, getAllProjects, deleteSingleProject, getSingleProject, createProject, savedRankingForProject, checkRankingForSelectedKeywords } = require('./controllers/projectControllers.js');
+const connectDB = require("./config/db");
+const { updateGoogleSheet, linkSheetToProject ,updateProject, getAllProjects, deleteSingleProject, getSingleProject, createProject, savedRankingForProject, checkRankingForSelectedKeywords, getSingleProjectRankingStatus } = require('./controllers/projectControllers.js');
 const auth = require('./middlewares/auth.js');
 const initAdminUser = require('./middlewares/createAdminUser.js');
 const { login } = require('./controllers/userControllers.js');
@@ -43,6 +44,9 @@ app.get('/api/projects', auth, getAllProjects);
 // Get a single project by ID
 app.get('/api/projects/:id', auth, getSingleProject);
 
+// Get a single project ranking status by ID
+app.get('/api/projects/:id/ranking-status', auth, getSingleProjectRankingStatus);
+
 // delete a single project by ID
 app.delete('/api/projects/:id', auth, deleteSingleProject);
 
@@ -66,9 +70,7 @@ app.post('/api/projects/:id/link-sheet', auth, linkSheetToProject);
 const PORT = process.env.PORT;
 app.listen(PORT, () => {
   // MongoDB Connection
-  mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('MongoDB connected successfully'))
-    .catch(err => console.error('MongoDB connection error:', err));
+  connectDB();
   console.log(`Server running on port ${PORT}`);
   initAdminUser();
 }); 
