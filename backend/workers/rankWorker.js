@@ -45,17 +45,67 @@ Country → Google Location Code
 --------------------------------------------------
 */
 function getCountryCode(country) {
-  if (!country) return "us";
+  if (!country) return "in";
 
   const map = {
-    india: "in",
-    usa: "us",
     "united states": "us",
+    usa: "us",
+    "united kingdom": "uk",
     uk: "uk",
-    "united kingdom": "uk"
+    india: "in",
+    australia: "au",
+    canada: "ca",
+    germany: "de",
+    france: "fr",
+    japan: "jp",
+    brazil: "br",
+    italy: "it",
+    spain: "es",
+    russia: "ru",
+    mexico: "mx",
+    "south korea": "kr",
+    indonesia: "id",
+    turkey: "tr",
+    netherlands: "nl",
+    "saudi arabia": "sa",
+    switzerland: "ch",
+    sweden: "se",
+    poland: "pl",
+    belgium: "be",
+    thailand: "th",
+    ireland: "ie",
+    austria: "at",
+    norway: "no",
+    denmark: "dk",
+    singapore: "sg",
+    "hong kong": "hk",
+    finland: "fi",
+    "new zealand": "nz",
+    israel: "il",
+    greece: "gr",
+    portugal: "pt",
+    "czech republic": "cz",
+    romania: "ro",
+    hungary: "hu",
+    vietnam: "vn",
+    malaysia: "my",
+    philippines: "ph",
+    "south africa": "za",
+    pakistan: "pk",
+    chile: "cl",
+    colombia: "co",
+    bangladesh: "bd",
+    egypt: "eg",
+    argentina: "ar",
+    morocco: "ma",
+    nigeria: "ng",
+    kenya: "ke",
+    peru: "pe",
+    "sri lanka": "lk",
+    ukraine: "ua",
   };
 
-  return map[country.toLowerCase()] || "us";
+  return map[country.toLowerCase()] || "in";
 }
 
 /*
@@ -64,12 +114,12 @@ Fetch Ranking (Top 100)
 --------------------------------------------------
 */
 async function fetchRank(keyword, domain, countryCode) {
+  console.log(countryCode);
 
   const perPage = 10;
   const maxPages = 10;
 
   for (let page = 1; page <= maxPages; page++) {
-
     const res = await axios.post(
       "https://google.serper.dev/search",
       {
@@ -87,21 +137,19 @@ async function fetchRank(keyword, domain, countryCode) {
           "X-API-KEY": process.env.SERPER_API_KEY,
           "Content-Type": "application/json",
         },
-        timeout: 30000
-      }
+        timeout: 30000,
+      },
     );
 
     const organic = res.data.organic || [];
 
     for (let i = 0; i < organic.length; i++) {
-
       const link = organic[i]?.link;
 
       if (link && hostMatches(link, domain)) {
-
         return {
           ranking: (page - 1) * perPage + (i + 1),
-          rankingUrl: link
+          rankingUrl: link,
         };
       }
     }
@@ -120,7 +168,6 @@ Worker Logic
 const worker = new Worker(
   "rank-check",
   async (job) => {
-
     console.log("⚙️ Worker picked job:", job.data);
 
     const { projectId, keyword } = job.data;
@@ -134,26 +181,16 @@ const worker = new Worker(
     const domain = normalizeDomain(project.websiteUrl);
     const countryCode = getCountryCode(project.country);
 
-    const prev =
-      project.rankings?.find((r) => r.keyword === keyword) || {};
+    const prev = project.rankings?.find((r) => r.keyword === keyword) || {};
 
-    let { ranking, rankingUrl } = await fetchRank(
-      keyword,
-      domain,
-      countryCode
-    );
+    let { ranking, rankingUrl } = await fetchRank(keyword, domain, countryCode);
 
     if (ranking === null) {
-
       console.log("⚠ Retry SERP once...");
 
       await sleep(3000);
 
-      const retryResult = await fetchRank(
-        keyword,
-        domain,
-        countryCode
-      );
+      const retryResult = await fetchRank(keyword, domain, countryCode);
 
       ranking = retryResult.ranking;
       rankingUrl = retryResult.rankingUrl;
@@ -178,7 +215,7 @@ const worker = new Worker(
 
     await Project.updateOne(
       { _id: projectId },
-      { $pull: { rankings: { keyword } } }
+      { $pull: { rankings: { keyword } } },
     );
 
     await Project.updateOne(
@@ -186,14 +223,14 @@ const worker = new Worker(
       {
         $push: { rankings: updatedRanking },
         $inc: { rankCheckDone: 1 },
-        $set: { rankCheckUpdatedAt: new Date() }
-      }
+        $set: { rankCheckUpdatedAt: new Date() },
+      },
     );
 
     const updatedProject = await Project.findById(projectId);
 
     console.log(
-      `📊 Progress ${updatedProject.rankCheckDone || 0}/${updatedProject.rankCheckTotal || 0}`
+      `📊 Progress ${updatedProject.rankCheckDone || 0}/${updatedProject.rankCheckTotal || 0}`,
     );
 
     /*
@@ -201,25 +238,21 @@ const worker = new Worker(
     Completion Check
     ---------------------------------------------
     */
-    if (
-      updatedProject.rankCheckDone >=
-      updatedProject.rankCheckTotal
-    ) {
-
+    if (updatedProject.rankCheckDone >= updatedProject.rankCheckTotal) {
       console.log("✅ Ranking completed");
 
       await Project.updateOne(
         { _id: projectId },
-        { rankCheckStatus: "completed" }
+        { rankCheckStatus: "completed" },
       );
     }
 
-    await sleep(1200 + Math.random() * 800)
+    await sleep(1200 + Math.random() * 800);
   },
   {
     connection,
     concurrency: 1,
-  }
+  },
 );
 
 /*
